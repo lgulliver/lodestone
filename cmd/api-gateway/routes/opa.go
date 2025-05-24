@@ -203,9 +203,10 @@ func handleOPABundleUpload(registryService *registry.Service) gin.HandlerFunc {
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
 		// Use current timestamp as version if not specified
-		version := fmt.Sprintf("v%d", c.Request.Header.Get("X-Bundle-Version"))
-		if version == "v" {
-			version = "latest"
+		versionHeader := c.Request.Header.Get("X-Bundle-Version")
+		version := "latest"
+		if versionHeader != "" {
+			version = fmt.Sprintf("v%s", versionHeader)
 		}
 
 		_, err := registryService.Upload(ctx, "opa", bundleName, version, c.Request.Body, user.ID)

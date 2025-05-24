@@ -12,6 +12,11 @@ import (
 
 // AuthMiddleware validates JWT tokens and API keys
 func AuthMiddleware(authService *auth.Service) gin.HandlerFunc {
+	return authMiddlewareWithInterface(authService)
+}
+
+// authMiddlewareWithInterface is the testable version that accepts an interface
+func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for JWT token in Authorization header
 		authHeader := c.GetHeader("Authorization")
@@ -61,6 +66,11 @@ func AuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 
 // OptionalAuthMiddleware allows both authenticated and anonymous access
 func OptionalAuthMiddleware(authService *auth.Service) gin.HandlerFunc {
+	return optionalAuthMiddlewareWithInterface(authService)
+}
+
+// optionalAuthMiddlewareWithInterface is the testable version that accepts an interface
+func optionalAuthMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Try to authenticate, but don't fail if no auth provided
 		authHeader := c.GetHeader("Authorization")

@@ -19,13 +19,13 @@ func GoRoutes(api *gin.RouterGroup, registryService *registry.Service, authServi
 	goproxy := api.Group("/go")
 
 	// Go module proxy protocol
-	goproxy.GET("/:module/@v/list", handleGoVersionList(registryService))
-	goproxy.GET("/:module/@v/:version.info", handleGoVersionInfo(registryService))
-	goproxy.GET("/:module/@v/:version.mod", handleGoModFile(registryService))
-	goproxy.GET("/:module/@v/:version.zip", handleGoModuleDownload(registryService))
 	goproxy.GET("/:module/@latest", handleGoLatest(registryService))
-
-	// Module upload (custom extension to Go proxy protocol)
+	goproxy.GET("/:module/@v/list", handleGoVersionList(registryService))
+	
+	// Handle versioned operations - this will detect file extensions like .info, .mod, .zip
+	goproxy.GET("/:module/@v/:version", handleGoVersionFile(registryService))
+	
+	// Module upload and delete (custom extension to Go proxy protocol)
 	goproxy.PUT("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoModuleUpload(registryService))
 	goproxy.DELETE("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoModuleDelete(registryService))
 }
@@ -62,84 +62,97 @@ func handleGoVersionList(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
-func handleGoVersionInfo(registryService *registry.Service) gin.HandlerFunc {
+func handleGoVersionFile(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		module := c.Param("module")
-		version := c.Param("version")
+		versionParam := c.Param("version")
 
-		if module == "" || version == "" {
+		if module == "" || versionParam == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "module path and version required"})
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
+		// Parse version and file type from the parameter (e.g., "v1.0.0.info", "v1.0.0.mod", "v1.0.0.zip")
+		parts := strings.Split(versionParam, ".")
+		if len(parts) < 2 {
+			// If no file extension, treat as regular version download (.zip)
+			version := versionParam
+			
+			// Handle .zip download
+			artifact, content, err := registryService.Download(c.Request.Context(), "go", module, version)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "module not found"})
+				return
+			}
 
-		artifact, _, err := registryService.Download(ctx, "go", module, version)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "version not found"})
+			c.Header("Content-Type", "application/zip")
+			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s@%s.zip", module, version))
+
+			if artifact.Size > 0 {
+				c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
+			}
+
+			defer content.Close()
+			_, err = io.Copy(c.Writer, content)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream module"})
+				return
+			}
 			return
 		}
 
-		// Go module info format
-		info := fmt.Sprintf(`{
+		version := strings.Join(parts[:len(parts)-1], ".") // Everything except the last part
+		fileType := parts[len(parts)-1]                    // The file extension
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "go")
+
+		switch fileType {
+		case "info":
+			// Go module info format
+			artifact, _, err := registryService.Download(ctx, "go", module, version)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "version not found"})
+				return
+			}
+
+			info := fmt.Sprintf(`{
 	"Version": "%s",
 	"Time": "%s"
 }`, artifact.Version, artifact.CreatedAt.Format("2006-01-02T15:04:05Z"))
 
-		c.Header("Content-Type", "application/json")
-		c.String(http.StatusOK, info)
-	}
-}
+			c.Header("Content-Type", "application/json")
+			c.String(http.StatusOK, info)
 
-func handleGoModFile(registryService *registry.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		module := c.Param("module")
-		version := c.Param("version")
+		case "mod":
+			// For now, return a simple go.mod file
+			// In a real implementation, this would be extracted from the uploaded module
+			modContent := fmt.Sprintf("module %s\n\ngo 1.19\n", module)
+			c.Header("Content-Type", "text/plain")
+			c.String(http.StatusOK, modContent)
 
-		if module == "" || version == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "module path and version required"})
-			return
-		}
+		case "zip":
+			artifact, content, err := registryService.Download(ctx, "go", module, version)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "module not found"})
+				return
+			}
 
-		// For now, return a simple go.mod file
-		// In a real implementation, this would be extracted from the uploaded module
-		modContent := fmt.Sprintf("module %s\n\ngo 1.19\n", module)
+			c.Header("Content-Type", "application/zip")
+			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s@%s.zip", module, version))
 
-		c.Header("Content-Type", "text/plain")
-		c.String(http.StatusOK, modContent)
-	}
-}
+			if artifact.Size > 0 {
+				c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
+			}
 
-func handleGoModuleDownload(registryService *registry.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		module := c.Param("module")
-		version := c.Param("version")
+			defer content.Close()
+			_, err = io.Copy(c.Writer, content)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream module"})
+				return
+			}
 
-		if module == "" || version == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "module path and version required"})
-			return
-		}
-
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-
-		artifact, content, err := registryService.Download(ctx, "go", module, version)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "module not found"})
-			return
-		}
-
-		c.Header("Content-Type", "application/zip")
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s@%s.zip", module, version))
-
-		if artifact.Size > 0 {
-			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
-		}
-
-		defer content.Close()
-		_, err = io.Copy(c.Writer, content)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream module"})
-			return
+		default:
+			c.JSON(http.StatusNotFound, gin.H{"error": "unsupported file type"})
 		}
 	}
 }
