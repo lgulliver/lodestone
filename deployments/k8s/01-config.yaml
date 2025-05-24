@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lodestone
+  labels:
+    name: lodestone
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lodestone-config
+  namespace: lodestone
+data:
+  SERVER_HOST: "0.0.0.0"
+  SERVER_PORT: "8080"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_USER: "lodestone"
+  DB_NAME: "lodestone"
+  DB_SSLMODE: "disable"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  STORAGE_TYPE: "local"
+  STORAGE_LOCAL_PATH: "/app/artifacts"
+  JWT_EXPIRATION: "24h"
+  BCRYPT_COST: "12"
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: lodestone-secrets
+  namespace: lodestone
+type: Opaque
+data:
+  # Base64 encoded values - change these in production!
+  # echo -n "password" | base64
+  DB_PASSWORD: cGFzc3dvcmQ=
+  # echo -n "change-this-secret-key" | base64  
+  JWT_SECRET: Y2hhbmdlLXRoaXMtc2VjcmV0LWtleQ==

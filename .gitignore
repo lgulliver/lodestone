@@ -23,3 +23,44 @@ go.work.sum
 
 # env file
 .env
+.env.local
+.env.*.local
+
+# Build directories
+/bin/
+/dist/
+/build/
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Temporary files
+*.tmp
+*.temp
+
+# Kubernetes secrets
+secrets.yaml
+*.secret.yaml
