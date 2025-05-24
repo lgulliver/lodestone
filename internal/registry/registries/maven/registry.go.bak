@@ -1,4 +1,4 @@
-package maven
+package maven_registry
 
 import (
 	"bytes"
@@ -7,29 +7,26 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lgulliver/lodestone/internal/common"
-	"github.com/lgulliver/lodestone/internal/storage"
+	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // Registry implements the Maven repository
 type Registry struct {
-	storage storage.BlobStorage
-	db      *common.Database
+	service *registry.Service
 }
 
 // New creates a new Maven registry handler
-func New(storage storage.BlobStorage, db *common.Database) *Registry {
+func New(service *registry.Service) *Registry {
 	return &Registry{
-		storage: storage,
-		db:      db,
+		service: service,
 	}
 }
 
 // Upload stores a Maven artifact
 func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
 	ctx := context.Background()
-
+	
 	// Determine content type based on file extension
 	contentType := "application/java-archive"
 	if strings.HasSuffix(artifact.Name, ".pom") {
@@ -39,13 +36,13 @@ func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
 	} else if strings.HasSuffix(artifact.Name, ".aar") {
 		contentType = "application/java-archive"
 	}
-
+	
 	// Store the content
 	reader := bytes.NewReader(content)
-	if err := r.storage.Store(ctx, artifact.StoragePath, reader, contentType); err != nil {
+	if err := r.service.Storage.Store(ctx, artifact.StoragePath, reader, contentType); err != nil {
 		return fmt.Errorf("failed to store Maven artifact: %w", err)
 	}
-
+	
 	artifact.ContentType = contentType
 	return nil
 }
@@ -78,7 +75,7 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 	}
 
 	groupId, artifactId := parts[0], parts[1]
-
+	
 	// Validate groupId format
 	groupIdRegex := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 	if !groupIdRegex.MatchString(groupId) {
@@ -111,9 +108,9 @@ func (r *Registry) GenerateStoragePath(name, version string) string {
 	if len(parts) != 2 {
 		return fmt.Sprintf("maven/%s/%s", name, version)
 	}
-
+	
 	groupId := strings.ReplaceAll(parts[0], ".", "/")
 	artifactId := parts[1]
-
+	
 	return fmt.Sprintf("maven/%s/%s/%s/%s-%s.jar", groupId, artifactId, version, artifactId, version)
 }

@@ -17,14 +17,14 @@ import (
 // GoRoutes sets up Go module proxy routes
 func GoRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	goproxy := api.Group("/go")
-	
+
 	// Go module proxy protocol
 	goproxy.GET("/:module/@v/list", handleGoVersionList(registryService))
 	goproxy.GET("/:module/@v/:version.info", handleGoVersionInfo(registryService))
 	goproxy.GET("/:module/@v/:version.mod", handleGoModFile(registryService))
 	goproxy.GET("/:module/@v/:version.zip", handleGoModuleDownload(registryService))
 	goproxy.GET("/:module/@latest", handleGoLatest(registryService))
-	
+
 	// Module upload (custom extension to Go proxy protocol)
 	goproxy.PUT("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoModuleUpload(registryService))
 	goproxy.DELETE("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoModuleDelete(registryService))
@@ -39,13 +39,13 @@ func handleGoVersionList(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     module,
 			Registry: "go",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list versions"})
 			return
@@ -73,8 +73,8 @@ func handleGoVersionInfo(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-		
-		artifact, _, err := registryService.Download(ctx, module, version)
+
+		artifact, _, err := registryService.Download(ctx, "go", module, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "version not found"})
 			return
@@ -101,8 +101,6 @@ func handleGoModFile(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-		
 		// For now, return a simple go.mod file
 		// In a real implementation, this would be extracted from the uploaded module
 		modContent := fmt.Sprintf("module %s\n\ngo 1.19\n", module)
@@ -123,8 +121,8 @@ func handleGoModuleDownload(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-		
-		artifact, content, err := registryService.Download(ctx, module, version)
+
+		artifact, content, err := registryService.Download(ctx, "go", module, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "module not found"})
 			return
@@ -132,7 +130,7 @@ func handleGoModuleDownload(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/zip")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s@%s.zip", module, version))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -155,14 +153,14 @@ func handleGoLatest(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     module,
 			Registry: "go",
 			Limit:    1, // Get the latest version
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get latest version"})
 			return
@@ -203,8 +201,7 @@ func handleGoModuleUpload(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "go")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		filename := fmt.Sprintf("%s@%s.zip", module, version)
-		err := registryService.Upload(ctx, "go", filename, c.Request.Body, "application/zip")
+		_, err := registryService.Upload(ctx, "go", module, version, c.Request.Body, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -235,7 +232,7 @@ func handleGoModuleDelete(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "go")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err := registryService.Delete(ctx, module, version)
+		err := registryService.Delete(ctx, "go", module, version, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete module"})
 			return

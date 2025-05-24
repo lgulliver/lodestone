@@ -11,13 +11,12 @@ import (
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/internal/registry"
-	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // MavenRoutes sets up Maven repository routes
 func MavenRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	maven := api.Group("/maven")
-	
+
 	// Maven repository structure: groupId/artifactId/version/artifactId-version.jar
 	maven.GET("/*path", middleware.OptionalAuthMiddleware(authService), handleMavenDownload(registryService))
 	maven.PUT("/*path", middleware.AuthMiddleware(authService), handleMavenUpload(registryService))
@@ -48,8 +47,8 @@ func handleMavenDownload(registryService *registry.Service) gin.HandlerFunc {
 		packageName := fmt.Sprintf("%s:%s", groupId, artifactId)
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
-		
-		artifact, content, err := registryService.Download(ctx, packageName, version)
+
+		artifact, content, err := registryService.Download(ctx, "maven", packageName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "artifact not found"})
 			return
@@ -57,7 +56,7 @@ func handleMavenDownload(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/java-archive")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -99,7 +98,26 @@ func handleMavenUpload(registryService *registry.Service) gin.HandlerFunc {
 			}
 		}
 
-		err := registryService.Upload(ctx, "maven", path, c.Request.Body, contentType)
+		// Parse Maven path to extract groupId, artifactId, and version
+		// Format: com/example/artifact/1.0.0/artifact-1.0.0.jar
+		pathParts := strings.Split(path, "/")
+		if len(pathParts) < 4 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid Maven path format"})
+			return
+		}
+
+		// Extract version and filename
+		version := pathParts[len(pathParts)-2]
+		filename := pathParts[len(pathParts)-1]
+
+		// Extract artifact ID from filename (remove version and extension)
+		artifactID := strings.Split(filename, "-")[0]
+
+		// Construct full artifact name (groupId:artifactId)
+		groupId := strings.Join(pathParts[:len(pathParts)-2], ".")
+		fullName := fmt.Sprintf("%s:%s", groupId, artifactID)
+
+		_, err := registryService.Upload(ctx, "maven", fullName, version, c.Request.Body, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -130,8 +148,8 @@ func handleMavenHead(registryService *registry.Service) gin.HandlerFunc {
 		packageName := fmt.Sprintf("%s:%s", groupId, artifactId)
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
-		
-		artifact, _, err := registryService.Download(ctx, packageName, version)
+
+		artifact, _, err := registryService.Download(ctx, "maven", packageName, version)
 		if err != nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -172,7 +190,7 @@ func handleMavenDelete(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err := registryService.Delete(ctx, packageName, version)
+		err := registryService.Delete(ctx, "maven", packageName, version, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete artifact"})
 			return

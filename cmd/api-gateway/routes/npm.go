@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,25 +17,25 @@ import (
 // NPMRoutes sets up npm registry routes
 func NPMRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	npm := api.Group("/npm")
-	
+
 	// Package metadata and download
 	npm.GET("/:name", handleNPMPackageInfo(registryService))
 	npm.GET("/:name/:version", handleNPMPackageVersion(registryService))
 	npm.GET("/@:scope/:name", handleNPMScopedPackageInfo(registryService))
 	npm.GET("/@:scope/:name/:version", handleNPMScopedPackageVersion(registryService))
-	
+
 	// Package tarball download
 	npm.GET("/:name/-/:filename", handleNPMDownload(registryService))
 	npm.GET("/@:scope/:name/-/:filename", handleNPMScopedDownload(registryService))
-	
+
 	// Package publish (requires authentication)
 	npm.PUT("/:name", middleware.AuthMiddleware(authService), handleNPMPublish(registryService))
 	npm.PUT("/@:scope/:name", middleware.AuthMiddleware(authService), handleNPMScopedPublish(registryService))
-	
+
 	// Package delete (requires authentication)
 	npm.DELETE("/:name/-rev/:rev", middleware.AuthMiddleware(authService), handleNPMDelete(registryService))
 	npm.DELETE("/@:scope/:name/-rev/:rev", middleware.AuthMiddleware(authService), handleNPMScopedDelete(registryService))
-	
+
 	// Search
 	npm.GET("/-/v1/search", handleNPMSearch(registryService))
 }
@@ -50,13 +49,13 @@ func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     packageName,
 			Registry: "npm",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get package info"})
 			return
@@ -100,10 +99,10 @@ func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"name":        packageName,
-			"versions":    versions,
-			"dist-tags":   distTags,
-			"time":        gin.H{}, // TODO: implement time tracking
+			"name":      packageName,
+			"versions":  versions,
+			"dist-tags": distTags,
+			"time":      gin.H{}, // TODO: implement time tracking
 		})
 	}
 }
@@ -119,8 +118,8 @@ func handleNPMPackageVersion(registryService *registry.Service) gin.HandlerFunc 
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		
-		artifact, _, err := registryService.Download(ctx, packageName, version)
+
+		artifact, _, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "package version not found"})
 			return
@@ -156,13 +155,13 @@ func handleNPMScopedPackageInfo(registryService *registry.Service) gin.HandlerFu
 		packageName := fmt.Sprintf("@%s/%s", scope, name)
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     packageName,
 			Registry: "npm",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get package info"})
 			return
@@ -204,10 +203,10 @@ func handleNPMScopedPackageInfo(registryService *registry.Service) gin.HandlerFu
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"name":        packageName,
-			"versions":    versions,
-			"dist-tags":   distTags,
-			"time":        gin.H{},
+			"name":      packageName,
+			"versions":  versions,
+			"dist-tags": distTags,
+			"time":      gin.H{},
 		})
 	}
 }
@@ -220,8 +219,8 @@ func handleNPMScopedPackageVersion(registryService *registry.Service) gin.Handle
 		packageName := fmt.Sprintf("@%s/%s", scope, name)
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		
-		artifact, _, err := registryService.Download(ctx, packageName, version)
+
+		artifact, _, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "package version not found"})
 			return
@@ -260,8 +259,8 @@ func handleNPMDownload(registryService *registry.Service) gin.HandlerFunc {
 		version = strings.TrimSuffix(version, ".tgz")
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		
-		artifact, content, err := registryService.Download(ctx, packageName, version)
+
+		artifact, content, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
 			return
@@ -269,7 +268,7 @@ func handleNPMDownload(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/gzip")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -295,8 +294,8 @@ func handleNPMScopedDownload(registryService *registry.Service) gin.HandlerFunc 
 		version = strings.TrimSuffix(version, ".tgz")
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		
-		artifact, content, err := registryService.Download(ctx, packageName, version)
+
+		artifact, content, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
 			return
@@ -304,7 +303,7 @@ func handleNPMScopedDownload(registryService *registry.Service) gin.HandlerFunc 
 
 		c.Header("Content-Type", "application/gzip")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -335,7 +334,7 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 		// Extract package.json and tarball from publish data
 		// This is a simplified implementation - real npm publish is more complex
 		packageName := c.Param("name")
-		
+
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
@@ -429,7 +428,7 @@ func handleNPMDelete(registryService *registry.Service) gin.HandlerFunc {
 		// In a real implementation, you'd parse the rev to determine what to delete
 		_ = rev
 
-		err := registryService.Delete(ctx, packageName, "") // Empty version = delete all
+		err := registryService.Delete(ctx, "npm", packageName, "", user.ID) // Empty version = delete all
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete package"})
 			return
@@ -459,7 +458,7 @@ func handleNPMScopedDelete(registryService *registry.Service) gin.HandlerFunc {
 
 		_ = rev
 
-		err := registryService.Delete(ctx, packageName, "")
+		err := registryService.Delete(ctx, "npm", packageName, "", user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete package"})
 			return
@@ -474,11 +473,11 @@ func handleNPMScopedDelete(registryService *registry.Service) gin.HandlerFunc {
 func handleNPMSearch(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		text := c.Query("text")
-		size := c.DefaultQuery("size", "20")
-		from := c.DefaultQuery("from", "0")
+		_ = c.DefaultQuery("size", "20") // TODO: implement pagination
+		_ = c.DefaultQuery("from", "0")  // TODO: implement pagination
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		
+
 		filter := &types.ArtifactFilter{
 			Registry: "npm",
 		}
@@ -487,7 +486,7 @@ func handleNPMSearch(registryService *registry.Service) gin.HandlerFunc {
 			filter.Name = text // Simple name-based search
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
 			return
@@ -514,8 +513,8 @@ func handleNPMSearch(registryService *registry.Service) gin.HandlerFunc {
 					"author":      gin.H{"name": author},
 				},
 				"score": gin.H{
-					"final":   1.0,
-					"detail":  gin.H{},
+					"final":  1.0,
+					"detail": gin.H{},
 				},
 			})
 		}

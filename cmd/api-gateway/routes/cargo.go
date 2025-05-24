@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
@@ -16,12 +17,12 @@ import (
 // CargoRoutes sets up Rust Cargo registry routes
 func CargoRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	cargo := api.Group("/cargo")
-	
+
 	// Cargo registry API
 	cargo.GET("/api/v1/crates", handleCargoSearch(registryService))
 	cargo.GET("/api/v1/crates/:crate", handleCargoInfo(registryService))
 	cargo.GET("/api/v1/crates/:crate/:version/download", handleCargoDownload(registryService))
-	
+
 	// Crate publish (requires authentication)
 	cargo.PUT("/api/v1/crates/new", middleware.AuthMiddleware(authService), handleCargoPublish(registryService))
 	cargo.DELETE("/api/v1/crates/:crate/:version/yank", middleware.AuthMiddleware(authService), handleCargoYank(registryService))
@@ -30,18 +31,18 @@ func CargoRoutes(api *gin.RouterGroup, registryService *registry.Service, authSe
 func handleCargoSearch(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := c.Query("q")
-		
+
 		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
-		
+
 		filter := &types.ArtifactFilter{
 			Registry: "cargo",
 		}
-		
+
 		if query != "" {
 			filter.Name = query
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
 			return
@@ -82,13 +83,13 @@ func handleCargoInfo(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     crateName,
 			Registry: "cargo",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get crate info"})
 			return
@@ -130,8 +131,8 @@ func handleCargoDownload(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
-		
-		artifact, content, err := registryService.Download(ctx, crateName, version)
+
+		artifact, content, err := registryService.Download(ctx, "cargo", crateName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "crate not found"})
 			return
@@ -139,7 +140,7 @@ func handleCargoDownload(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/gzip")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s-%s.crate", crateName, version))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -172,7 +173,25 @@ func handleCargoPublish(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err = registryService.Upload(ctx, "cargo", header.Filename, file, "application/gzip")
+		// Parse Cargo crate filename: cratename-version.crate
+		filename := header.Filename
+		if !strings.HasSuffix(filename, ".crate") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "crate file must be .crate format"})
+			return
+		}
+
+		nameVersion := strings.TrimSuffix(filename, ".crate")
+		parts := strings.Split(nameVersion, "-")
+		if len(parts) < 2 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid crate filename format, expected: cratename-version.crate"})
+			return
+		}
+
+		// Last part is version, everything else is crate name
+		version := parts[len(parts)-1]
+		crateName := strings.Join(parts[:len(parts)-1], "-")
+
+		_, err = registryService.Upload(ctx, "cargo", crateName, version, file, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -209,7 +228,7 @@ func handleCargoYank(registryService *registry.Service) gin.HandlerFunc {
 
 		// For now, yanking is equivalent to deletion
 		// In a real implementation, you'd mark the version as yanked instead
-		err := registryService.Delete(ctx, crateName, version)
+		err := registryService.Delete(ctx, "cargo", crateName, version, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to yank crate"})
 			return

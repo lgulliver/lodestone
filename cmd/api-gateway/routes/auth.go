@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/pkg/types"
@@ -13,11 +14,11 @@ import (
 // AuthRoutes sets up authentication-related routes
 func AuthRoutes(api *gin.RouterGroup, authService *auth.Service) {
 	auth := api.Group("/auth")
-	
+
 	// Public routes
 	auth.POST("/register", handleRegister(authService))
 	auth.POST("/login", handleLogin(authService))
-	
+
 	// Protected routes
 	authenticated := auth.Group("/")
 	authenticated.Use(middleware.AuthMiddleware(authService))
@@ -28,20 +29,15 @@ func AuthRoutes(api *gin.RouterGroup, authService *auth.Service) {
 
 func handleRegister(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			Username string `json:"username" binding:"required"`
-			Email    string `json:"email" binding:"required,email"`
-			Password string `json:"password" binding:"required,min=8"`
-		}
-
+		var req types.RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "request_id", c.GetHeader("X-Request-ID"))
-		
-		user, err := authService.Register(ctx, req.Username, req.Email, req.Password)
+
+		user, err := authService.Register(ctx, &req)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -59,30 +55,24 @@ func handleRegister(authService *auth.Service) gin.HandlerFunc {
 
 func handleLogin(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			Username string `json:"username" binding:"required"`
-			Password string `json:"password" binding:"required"`
-		}
-
+		var req types.LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "request_id", c.GetHeader("X-Request-ID"))
-		
-		token, user, err := authService.Login(ctx, req.Username, req.Password)
+
+		authToken, err := authService.Login(ctx, &req)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"token": token,
+			"token": authToken.Token,
 			"user": gin.H{
-				"id":       user.ID,
-				"username": user.Username,
-				"email":    user.Email,
+				"id": authToken.UserID,
 			},
 		})
 	}
@@ -97,8 +87,8 @@ func handleCreateAPIKey(authService *auth.Service) gin.HandlerFunc {
 		}
 
 		var req struct {
-			Name        string              `json:"name" binding:"required"`
-			Permissions []types.Permission  `json:"permissions"`
+			Name        string   `json:"name" binding:"required"`
+			Permissions []string `json:"permissions"`
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -107,8 +97,8 @@ func handleCreateAPIKey(authService *auth.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
-		
-		apiKey, err := authService.CreateAPIKey(ctx, user.ID, req.Name, req.Permissions)
+
+		apiKey, keyValue, err := authService.CreateAPIKey(ctx, user.ID, req.Name, req.Permissions)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create API key"})
 			return
@@ -116,6 +106,7 @@ func handleCreateAPIKey(authService *auth.Service) gin.HandlerFunc {
 
 		c.JSON(http.StatusCreated, gin.H{
 			"api_key": apiKey,
+			"key":     keyValue,
 		})
 	}
 }
@@ -129,7 +120,7 @@ func handleListAPIKeys(authService *auth.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
-		
+
 		apiKeys, err := authService.ListAPIKeys(ctx, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list API keys"})
@@ -156,9 +147,15 @@ func handleRevokeAPIKey(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
+		keyUUID, err := uuid.Parse(keyID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid API key ID format"})
+			return
+		}
+
 		ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
-		
-		err := authService.RevokeAPIKey(ctx, user.ID, keyID)
+
+		err = authService.RevokeAPIKey(ctx, keyUUID, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke API key"})
 			return

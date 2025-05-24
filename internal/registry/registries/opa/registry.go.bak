@@ -1,39 +1,36 @@
-package opa
+package opa_registry
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 
-	"github.com/lgulliver/lodestone/internal/common"
-	"github.com/lgulliver/lodestone/internal/storage"
+	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // Registry implements the Open Policy Agent bundle registry
 type Registry struct {
-	storage storage.BlobStorage
-	db      *common.Database
+	service *registry.Service
 }
 
 // New creates a new OPA registry handler
-func New(storage storage.BlobStorage, db *common.Database) *Registry {
+func New(service *registry.Service) *Registry {
 	return &Registry{
-		storage: storage,
-		db:      db,
+		service: service,
 	}
 }
 
 // Upload stores an OPA bundle
 func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
 	ctx := context.Background()
-
+	
 	// Store the content
 	reader := bytes.NewReader(content)
-	if err := r.storage.Store(ctx, artifact.StoragePath, reader, "application/gzip"); err != nil {
+	if err := r.service.Storage.Store(ctx, artifact.StoragePath, reader, "application/gzip"); err != nil {
 		return fmt.Errorf("failed to store OPA bundle: %w", err)
 	}
-
+	
 	artifact.ContentType = "application/gzip"
 	return nil
 }

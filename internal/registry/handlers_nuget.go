@@ -35,7 +35,7 @@ func (r *NuGetRegistry) Upload(artifact *types.Artifact, content []byte) error {
 	
 	// Store the content
 	reader := bytes.NewReader(content)
-	if err := r.service.storage.Store(ctx, artifact.StoragePath, reader, "application/zip"); err != nil {
+	if err := r.service.Storage.Store(ctx, artifact.StoragePath, reader, "application/zip"); err != nil {
 		return fmt.Errorf("failed to store NuGet package: %w", err)
 	}
 	

@@ -1,4 +1,4 @@
-package npm_registry
+package npm
 
 import (
 	"bytes"
@@ -8,13 +8,15 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lgulliver/lodestone/internal/registry"
+	"github.com/lgulliver/lodestone/internal/common"
+	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // Registry implements the npm package registry
 type Registry struct {
-	service *registry.Service
+	storage storage.BlobStorage
+	db      *common.Database
 }
 
 // PackageManifest represents package.json structure
@@ -31,22 +33,23 @@ type PackageManifest struct {
 }
 
 // New creates a new npm registry handler
-func New(service *registry.Service) *Registry {
+func New(storage storage.BlobStorage, db *common.Database) *Registry {
 	return &Registry{
-		service: service,
+		storage: storage,
+		db:      db,
 	}
 }
 
 // Upload stores an npm package
 func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
 	ctx := context.Background()
-	
+
 	// Store the content
 	reader := bytes.NewReader(content)
-	if err := r.service.Storage.Store(ctx, artifact.StoragePath, reader, "application/octet-stream"); err != nil {
+	if err := r.storage.Store(ctx, artifact.StoragePath, reader, "application/octet-stream"); err != nil {
 		return fmt.Errorf("failed to store npm package: %w", err)
 	}
-	
+
 	artifact.ContentType = "application/octet-stream"
 	return nil
 }
@@ -80,22 +83,22 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 	}
 
 	// Extract package.json from the tarball to validate
-	// This is a simplified validation - in a real implementation, we would extract 
+	// This is a simplified validation - in a real implementation, we would extract
 	// and parse package.json from the tarball
 	var manifest PackageManifest
-	
+
 	// Assume content contains a mock package.json for testing
 	if err := json.Unmarshal(content[:100], &manifest); err == nil {
 		// If we can extract a manifest, validate name and version match
 		if manifest.Name != "" && manifest.Name != artifact.Name {
 			return fmt.Errorf("package name mismatch: %s vs %s", manifest.Name, artifact.Name)
 		}
-		
+
 		if manifest.Version != "" && manifest.Version != artifact.Version {
 			return fmt.Errorf("package version mismatch: %s vs %s", manifest.Version, artifact.Version)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -103,15 +106,15 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 	// Extract package.json from the tarball
 	// In a real implementation, we would extract and parse package.json
-	
+
 	metadata := map[string]interface{}{
 		"format": "npm",
 		"type":   "package",
 	}
-	
+
 	// Try to extract some basic info from the tarball
 	var manifest PackageManifest
-	
+
 	// Assume content contains a mock package.json for testing
 	if err := json.Unmarshal(content[:100], &manifest); err == nil {
 		if manifest.Description != "" {
@@ -127,7 +130,7 @@ func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 			metadata["dependencies"] = manifest.Dependencies
 		}
 	}
-	
+
 	return metadata, nil
 }
 
@@ -139,6 +142,6 @@ func (r *Registry) GenerateStoragePath(name, version string) string {
 		encodedName := strings.ReplaceAll(name, "/", "%2f")
 		return fmt.Sprintf("npm/%s/%s.tgz", encodedName, version)
 	}
-	
+
 	return fmt.Sprintf("npm/%s/%s.tgz", name, version)
 }

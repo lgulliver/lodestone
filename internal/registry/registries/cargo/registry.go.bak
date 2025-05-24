@@ -1,4 +1,4 @@
-package cargo
+package cargo_registry
 
 import (
 	"bytes"
@@ -6,15 +6,13 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/lgulliver/lodestone/internal/common"
-	"github.com/lgulliver/lodestone/internal/storage"
+	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // Registry implements the Rust/Cargo package registry
 type Registry struct {
-	storage storage.BlobStorage
-	db      *common.Database
+	service *registry.Service
 }
 
 // CargoManifest represents Cargo.toml structure
@@ -32,23 +30,22 @@ type CargoManifest struct {
 }
 
 // New creates a new Cargo registry handler
-func New(storage storage.BlobStorage, db *common.Database) *Registry {
+func New(service *registry.Service) *Registry {
 	return &Registry{
-		storage: storage,
-		db:      db,
+		service: service,
 	}
 }
 
 // Upload stores a Cargo package
 func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
 	ctx := context.Background()
-
+	
 	// Store the content
 	reader := bytes.NewReader(content)
-	if err := r.storage.Store(ctx, artifact.StoragePath, reader, "application/gzip"); err != nil {
+	if err := r.service.Storage.Store(ctx, artifact.StoragePath, reader, "application/gzip"); err != nil {
 		return fmt.Errorf("failed to store Cargo package: %w", err)
 	}
-
+	
 	artifact.ContentType = "application/gzip"
 	return nil
 }
@@ -88,8 +85,8 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 	// TODO: Extract metadata from Cargo.toml
 	return map[string]interface{}{
-		"format":       "cargo",
-		"type":         "crate",
+		"format":      "cargo",
+		"type":        "crate",
 		"rust_version": "1.70.0", // Should be extracted
 	}, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
@@ -16,12 +17,12 @@ import (
 // OPARoutes sets up Open Policy Agent bundle repository routes
 func OPARoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	opa := api.Group("/opa")
-	
+
 	// OPA bundle API
 	opa.GET("/bundles/:name", middleware.OptionalAuthMiddleware(authService), handleOPABundleDownload(registryService))
 	opa.GET("/bundles/:name/:version", middleware.OptionalAuthMiddleware(authService), handleOPABundleVersionDownload(registryService))
 	opa.GET("/bundles", handleOPABundleList(registryService))
-	
+
 	// Bundle upload (requires authentication)
 	opa.PUT("/bundles/:name", middleware.AuthMiddleware(authService), handleOPABundleUpload(registryService))
 	opa.PUT("/bundles/:name/:version", middleware.AuthMiddleware(authService), handleOPABundleVersionUpload(registryService))
@@ -37,7 +38,7 @@ func handleOPABundleDownload(registryService *registry.Service) gin.HandlerFunc 
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
-		
+
 		// Get the latest version of the bundle
 		filter := &types.ArtifactFilter{
 			Name:     bundleName,
@@ -45,7 +46,7 @@ func handleOPABundleDownload(registryService *registry.Service) gin.HandlerFunc 
 			Limit:    1,
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get bundle"})
 			return
@@ -57,7 +58,7 @@ func handleOPABundleDownload(registryService *registry.Service) gin.HandlerFunc 
 		}
 
 		artifact := artifacts[0]
-		_, content, err := registryService.Download(ctx, bundleName, artifact.Version)
+		_, content, err := registryService.Download(ctx, "opa", bundleName, artifact.Version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "bundle not found"})
 			return
@@ -66,7 +67,7 @@ func handleOPABundleDownload(registryService *registry.Service) gin.HandlerFunc 
 		c.Header("Content-Type", "application/gzip")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.tar.gz", bundleName))
 		c.Header("ETag", fmt.Sprintf(`"%s"`, artifact.SHA256))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -91,8 +92,8 @@ func handleOPABundleVersionDownload(registryService *registry.Service) gin.Handl
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
-		
-		artifact, content, err := registryService.Download(ctx, bundleName, version)
+
+		artifact, content, err := registryService.Download(ctx, "opa", bundleName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "bundle version not found"})
 			return
@@ -101,7 +102,7 @@ func handleOPABundleVersionDownload(registryService *registry.Service) gin.Handl
 		c.Header("Content-Type", "application/gzip")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s-%s.tar.gz", bundleName, version))
 		c.Header("ETag", fmt.Sprintf(`"%s"`, artifact.SHA256))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -118,12 +119,12 @@ func handleOPABundleVersionDownload(registryService *registry.Service) gin.Handl
 func handleOPABundleList(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
-		
+
 		filter := &types.ArtifactFilter{
 			Registry: "opa",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list bundles"})
 			return
@@ -133,7 +134,7 @@ func handleOPABundleList(registryService *registry.Service) gin.HandlerFunc {
 		bundles := make(map[string]gin.H)
 		for _, artifact := range artifacts {
 			bundleInfo, exists := bundles[artifact.Name]
-			if !exists || artifact.CreatedAt.After(bundleInfo["created_at"].(string)) {
+			if !exists {
 				var description string
 				if artifact.Metadata != nil {
 					if desc, ok := artifact.Metadata["description"].(string); ok {
@@ -145,8 +146,28 @@ func handleOPABundleList(registryService *registry.Service) gin.HandlerFunc {
 					"name":        artifact.Name,
 					"version":     artifact.Version,
 					"description": description,
-					"created_at":  artifact.CreatedAt.Format("2006-01-02T15:04:05Z"),
+					"created_at":  artifact.CreatedAt,
 					"size":        artifact.Size,
+				}
+			} else {
+				// Compare timestamps to get the latest version
+				if existingTime, ok := bundleInfo["created_at"].(time.Time); ok {
+					if artifact.CreatedAt.After(existingTime) {
+						var description string
+						if artifact.Metadata != nil {
+							if desc, ok := artifact.Metadata["description"].(string); ok {
+								description = desc
+							}
+						}
+
+						bundles[artifact.Name] = gin.H{
+							"name":        artifact.Name,
+							"version":     artifact.Version,
+							"description": description,
+							"created_at":  artifact.CreatedAt,
+							"size":        artifact.Size,
+						}
+					}
 				}
 			}
 		}
@@ -187,8 +208,7 @@ func handleOPABundleUpload(registryService *registry.Service) gin.HandlerFunc {
 			version = "latest"
 		}
 
-		filename := fmt.Sprintf("%s-%s.tar.gz", bundleName, version)
-		err := registryService.Upload(ctx, "opa", filename, c.Request.Body, "application/gzip")
+		_, err := registryService.Upload(ctx, "opa", bundleName, version, c.Request.Body, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -221,8 +241,7 @@ func handleOPABundleVersionUpload(registryService *registry.Service) gin.Handler
 		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		filename := fmt.Sprintf("%s-%s.tar.gz", bundleName, version)
-		err := registryService.Upload(ctx, "opa", filename, c.Request.Body, "application/gzip")
+		_, err := registryService.Upload(ctx, "opa", bundleName, version, c.Request.Body, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -255,7 +274,7 @@ func handleOPABundleDelete(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err := registryService.Delete(ctx, bundleName, version)
+		err := registryService.Delete(ctx, "opa", bundleName, version, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete bundle"})
 			return

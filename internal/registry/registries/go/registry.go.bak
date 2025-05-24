@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/storage"
+	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
@@ -20,9 +20,9 @@ type Registry struct {
 
 // GoModInfo represents Go module information
 type GoModInfo struct {
-	Version string    `json:"Version"`
-	Time    time.Time `json:"Time"`
-	Origin  *GoOrigin `json:"Origin,omitempty"`
+	Version string     `json:"Version"`
+	Time    time.Time  `json:"Time"`
+	Origin  *GoOrigin  `json:"Origin,omitempty"`
 }
 
 // GoOrigin represents information about the source of a Go module
@@ -45,13 +45,13 @@ func New(storage storage.BlobStorage, db *common.Database) *Registry {
 // Upload stores a Go module
 func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
 	ctx := context.Background()
-
+	
 	// Store the content
 	reader := bytes.NewReader(content)
 	if err := r.storage.Store(ctx, artifact.StoragePath, reader, "application/zip"); err != nil {
 		return fmt.Errorf("failed to store Go module: %w", err)
 	}
-
+	
 	artifact.ContentType = "application/zip"
 	return nil
 }

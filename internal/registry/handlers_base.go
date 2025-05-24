@@ -28,12 +28,12 @@ func isValidNuGetPackageName(name string) bool {
 	if name == "" || len(name) > 100 {
 		return false
 	}
-	
+
 	// NuGet package names should not start or end with dots
 	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
 		return false
 	}
-	
+
 	// Check for valid characters (letters, numbers, dots, underscores, hyphens)
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._-]+$`, name)
 	return matched
@@ -44,7 +44,7 @@ func isValidSemver(version string) bool {
 	if version == "" {
 		return false
 	}
-	
+
 	// Basic semver pattern: X.Y.Z with optional pre-release and build
 	matched, _ := regexp.MatchString(`^[0-9]+\.[0-9]+\.[0-9]+`, version)
 	return matched
@@ -55,7 +55,7 @@ func isValidNPMPackageName(name string) bool {
 	if name == "" || len(name) > 214 {
 		return false
 	}
-	
+
 	// npm packages can start with @ for scoped packages
 	if strings.HasPrefix(name, "@") {
 		parts := strings.Split(name, "/")
@@ -65,7 +65,7 @@ func isValidNPMPackageName(name string) bool {
 		// Validate scope and package name separately
 		return isValidNPMName(parts[0][1:]) && isValidNPMName(parts[1])
 	}
-	
+
 	return isValidNPMName(name)
 }
 
@@ -74,7 +74,7 @@ func isValidNPMName(name string) bool {
 	if name == "" {
 		return false
 	}
-	
+
 	// npm names are lowercase and can contain dots, hyphens, underscores
 	matched, _ := regexp.MatchString(`^[a-z0-9._-]+$`, name)
 	return matched
@@ -85,13 +85,13 @@ func isValidGoModulePath(path string) bool {
 	if path == "" {
 		return false
 	}
-	
+
 	// Basic validation for Go module paths
 	parts := strings.Split(path, "/")
 	if len(parts) < 2 {
 		return false
 	}
-	
+
 	// First part should be a domain
 	domain := parts[0]
 	return strings.Contains(domain, ".")
@@ -102,7 +102,7 @@ func isValidMavenCoordinates(name string) bool {
 	if name == "" {
 		return false
 	}
-	
+
 	// Maven coordinates format: groupId:artifactId
 	parts := strings.Split(name, ":")
 	return len(parts) == 2 && parts[0] != "" && parts[1] != ""
@@ -113,7 +113,7 @@ func isValidHelmChartName(name string) bool {
 	if name == "" || len(name) > 63 {
 		return false
 	}
-	
+
 	// Helm chart names follow DNS naming conventions
 	matched, _ := regexp.MatchString(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, name)
 	return matched
@@ -124,7 +124,7 @@ func isValidCargoPackageName(name string) bool {
 	if name == "" || len(name) > 64 {
 		return false
 	}
-	
+
 	// Cargo package names: alphanumeric, underscores, hyphens
 	matched, _ := regexp.MatchString(`^[a-zA-Z][a-zA-Z0-9_-]*$`, name)
 	return matched
@@ -135,7 +135,7 @@ func isValidGemName(name string) bool {
 	if name == "" {
 		return false
 	}
-	
+
 	// Gem names: letters, numbers, underscores, hyphens, dots
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._-]+$`, name)
 	return matched
@@ -146,7 +146,7 @@ func isValidOPABundleName(name string) bool {
 	if name == "" {
 		return false
 	}
-	
+
 	// OPA bundle names: letters, numbers, underscores, hyphens, slashes
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._/-]+$`, name)
 	return matched

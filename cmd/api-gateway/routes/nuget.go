@@ -18,19 +18,19 @@ import (
 // NuGetRoutes sets up NuGet package manager routes
 func NuGetRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	nuget := api.Group("/nuget")
-	
+
 	// NuGet v3 API routes
 	// Service index (metadata endpoint)
 	nuget.GET("/v3-flatcontainer/:id/index.json", handleNuGetServiceIndex(registryService))
 	nuget.GET("/v3-flatcontainer/:id/:version/:filename", middleware.OptionalAuthMiddleware(authService), handleNuGetDownload(registryService))
-	
+
 	// Package publish (requires authentication)
 	nuget.PUT("/api/v2/package", middleware.AuthMiddleware(authService), handleNuGetUpload(registryService))
 	nuget.DELETE("/api/v2/package/:id/:version", middleware.AuthMiddleware(authService), handleNuGetDelete(registryService))
-	
+
 	// Search API
 	nuget.GET("/v3/search", handleNuGetSearch(registryService))
-	
+
 	// Package metadata
 	nuget.GET("/v3/registration/:id/index.json", handleNuGetPackageMetadata(registryService))
 }
@@ -44,13 +44,13 @@ func handleNuGetServiceIndex(registryService *registry.Service) gin.HandlerFunc 
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     packageID,
 			Registry: "nuget",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list packages"})
 			return
@@ -79,8 +79,8 @@ func handleNuGetDownload(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
-		
-		artifact, content, err := registryService.Download(ctx, packageID, version)
+
+		artifact, content, err := registryService.Download(ctx, "nuget", packageID, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
 			return
@@ -88,7 +88,7 @@ func handleNuGetDownload(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/zip")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", strconv.FormatInt(artifact.Size, 10))
 		}
@@ -120,7 +120,35 @@ func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err = registryService.Upload(ctx, "nuget", header.Filename, file, "application/zip")
+		// Extract package name and version from filename
+		// NuGet packages follow the pattern: PackageName.Version.nupkg
+		filename := header.Filename
+		if !strings.HasSuffix(filename, ".nupkg") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid package file extension"})
+			return
+		}
+
+		nameVersion := strings.TrimSuffix(filename, ".nupkg")
+		parts := strings.Split(nameVersion, ".")
+		if len(parts) < 2 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid package filename format"})
+			return
+		}
+
+		// Find where version starts (versions are typically numeric)
+		versionStartIndex := len(parts) - 1
+		for i := len(parts) - 1; i >= 1; i-- {
+			if _, err := strconv.Atoi(string(parts[i][0])); err == nil {
+				versionStartIndex = i
+			} else {
+				break
+			}
+		}
+
+		packageName := strings.Join(parts[:versionStartIndex], ".")
+		version := strings.Join(parts[versionStartIndex:], ".")
+
+		_, err = registryService.Upload(ctx, "nuget", packageName, version, file, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -151,7 +179,7 @@ func handleNuGetDelete(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err := registryService.Delete(ctx, packageID, version)
+		err := registryService.Delete(ctx, "nuget", packageID, version, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete package"})
 			return
@@ -173,7 +201,7 @@ func handleNuGetSearch(registryService *registry.Service) gin.HandlerFunc {
 		takeInt, _ := strconv.Atoi(take)
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
-		
+
 		filter := &types.ArtifactFilter{
 			Registry: "nuget",
 			Limit:    takeInt,
@@ -184,7 +212,7 @@ func handleNuGetSearch(registryService *registry.Service) gin.HandlerFunc {
 			filter.Name = query // Simple name-based search for now
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
 			return
@@ -204,10 +232,10 @@ func handleNuGetSearch(registryService *registry.Service) gin.HandlerFunc {
 			}
 
 			results = append(results, gin.H{
-				"id":          artifact.Name,
-				"version":     artifact.Version,
-				"description": description,
-				"authors":     []string{author},
+				"id":             artifact.Name,
+				"version":        artifact.Version,
+				"description":    description,
+				"authors":        []string{author},
 				"totalDownloads": 0, // TODO: implement download counting
 			})
 		}
@@ -228,13 +256,13 @@ func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFu
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     packageID,
 			Registry: "nuget",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get package metadata"})
 			return
@@ -262,8 +290,8 @@ func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFu
 					"description": description,
 					"published":   artifact.CreatedAt,
 				},
-				"packageContent": fmt.Sprintf("/nuget/v3-flatcontainer/%s/%s/%s.%s.nupkg", 
-					strings.ToLower(artifact.Name), artifact.Version, 
+				"packageContent": fmt.Sprintf("/nuget/v3-flatcontainer/%s/%s/%s.%s.nupkg",
+					strings.ToLower(artifact.Name), artifact.Version,
 					strings.ToLower(artifact.Name), artifact.Version),
 			})
 		}

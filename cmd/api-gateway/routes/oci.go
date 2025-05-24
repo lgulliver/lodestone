@@ -17,31 +17,31 @@ import (
 // OCIRoutes sets up OCI (Docker) registry routes
 func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	oci := api.Group("/v2")
-	
+
 	// Base endpoint for Docker registry API compatibility
 	oci.GET("/", handleOCIBase())
-	
+
 	// Image manifest operations
 	oci.GET("/:name/manifests/:reference", middleware.OptionalAuthMiddleware(authService), handleOCIManifestGet(registryService))
 	oci.PUT("/:name/manifests/:reference", middleware.AuthMiddleware(authService), handleOCIManifestPut(registryService))
 	oci.DELETE("/:name/manifests/:reference", middleware.AuthMiddleware(authService), handleOCIManifestDelete(registryService))
 	oci.HEAD("/:name/manifests/:reference", middleware.OptionalAuthMiddleware(authService), handleOCIManifestHead(registryService))
-	
+
 	// Blob operations
 	oci.GET("/:name/blobs/:digest", middleware.OptionalAuthMiddleware(authService), handleOCIBlobGet(registryService))
 	oci.HEAD("/:name/blobs/:digest", middleware.OptionalAuthMiddleware(authService), handleOCIBlobHead(registryService))
 	oci.DELETE("/:name/blobs/:digest", middleware.AuthMiddleware(authService), handleOCIBlobDelete(registryService))
-	
+
 	// Blob upload operations
 	oci.POST("/:name/blobs/uploads/", middleware.AuthMiddleware(authService), handleOCIBlobUploadStart(registryService))
 	oci.PATCH("/:name/blobs/uploads/:uuid", middleware.AuthMiddleware(authService), handleOCIBlobUploadChunk(registryService))
 	oci.PUT("/:name/blobs/uploads/:uuid", middleware.AuthMiddleware(authService), handleOCIBlobUploadComplete(registryService))
 	oci.DELETE("/:name/blobs/uploads/:uuid", middleware.AuthMiddleware(authService), handleOCIBlobUploadCancel(registryService))
 	oci.GET("/:name/blobs/uploads/:uuid", middleware.AuthMiddleware(authService), handleOCIBlobUploadStatus(registryService))
-	
+
 	// Tag listing
 	oci.GET("/:name/tags/list", middleware.OptionalAuthMiddleware(authService), handleOCITagsList(registryService))
-	
+
 	// Catalog (repository listing)
 	oci.GET("/_catalog", middleware.OptionalAuthMiddleware(authService), handleOCICatalog(registryService))
 }
@@ -66,7 +66,7 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		
+
 		// For OCI, the reference could be a tag or digest
 		var version string
 		if strings.HasPrefix(reference, "sha256:") {
@@ -75,20 +75,20 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 				Name:     name,
 				Registry: "oci",
 			}
-			
-			artifacts, err := registryService.List(ctx, filter)
+
+			artifacts, _, err := registryService.List(ctx, filter)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list manifests"})
 				return
 			}
-			
+
 			for _, artifact := range artifacts {
 				if artifact.SHA256 == reference {
 					version = artifact.Version
 					break
 				}
 			}
-			
+
 			if version == "" {
 				c.JSON(http.StatusNotFound, gin.H{"error": "manifest not found"})
 				return
@@ -97,7 +97,7 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 			version = reference
 		}
 
-		artifact, content, err := registryService.Download(ctx, name, version)
+		artifact, content, err := registryService.Download(ctx, "oci", name, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "manifest not found"})
 			return
@@ -105,7 +105,7 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
 		c.Header("Docker-Content-Digest", fmt.Sprintf("sha256:%s", artifact.SHA256))
-		
+
 		defer content.Close()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
@@ -139,7 +139,7 @@ func handleOCIManifestPut(registryService *registry.Service) gin.HandlerFunc {
 			contentType = "application/vnd.docker.distribution.manifest.v2+json"
 		}
 
-		err := registryService.Upload(ctx, "oci", fmt.Sprintf("%s:%s", name, reference), c.Request.Body, contentType)
+		_, err := registryService.Upload(ctx, "oci", name, reference, c.Request.Body, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -164,7 +164,7 @@ func handleOCIManifestDelete(registryService *registry.Service) gin.HandlerFunc 
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err := registryService.Delete(ctx, name, reference)
+		err := registryService.Delete(ctx, "oci", name, reference, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete manifest"})
 			return
@@ -180,8 +180,8 @@ func handleOCIManifestHead(registryService *registry.Service) gin.HandlerFunc {
 		reference := c.Param("reference")
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		
-		artifact, _, err := registryService.Download(ctx, name, reference)
+
+		artifact, _, err := registryService.Download(ctx, "oci", name, reference)
 		if err != nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -205,19 +205,19 @@ func handleOCIBlobGet(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		
+
 		// Find artifact by SHA256
 		filter := &types.ArtifactFilter{
 			Name:     name,
 			Registry: "oci",
 		}
-		
-		artifacts, err := registryService.List(ctx, filter)
+
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list blobs"})
 			return
 		}
-		
+
 		var targetArtifact *types.Artifact
 		for _, artifact := range artifacts {
 			if fmt.Sprintf("sha256:%s", artifact.SHA256) == digest {
@@ -225,13 +225,13 @@ func handleOCIBlobGet(registryService *registry.Service) gin.HandlerFunc {
 				break
 			}
 		}
-		
+
 		if targetArtifact == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "blob not found"})
 			return
 		}
 
-		_, content, err := registryService.Download(ctx, name, targetArtifact.Version)
+		_, content, err := registryService.Download(ctx, "oci", name, targetArtifact.Version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "blob not found"})
 			return
@@ -239,7 +239,7 @@ func handleOCIBlobGet(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/octet-stream")
 		c.Header("Docker-Content-Digest", digest)
-		
+
 		defer content.Close()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
@@ -260,18 +260,18 @@ func handleOCIBlobHead(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     name,
 			Registry: "oci",
 		}
-		
-		artifacts, err := registryService.List(ctx, filter)
+
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		
+
 		for _, artifact := range artifacts {
 			if fmt.Sprintf("sha256:%s", artifact.SHA256) == digest {
 				c.Header("Content-Type", "application/octet-stream")
@@ -281,7 +281,7 @@ func handleOCIBlobHead(registryService *registry.Service) gin.HandlerFunc {
 				return
 			}
 		}
-		
+
 		c.Status(http.StatusNotFound)
 	}
 }
@@ -305,16 +305,16 @@ func handleOCIBlobDelete(registryService *registry.Service) gin.HandlerFunc {
 			Name:     name,
 			Registry: "oci",
 		}
-		
-		artifacts, err := registryService.List(ctx, filter)
+
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list blobs"})
 			return
 		}
-		
+
 		for _, artifact := range artifacts {
 			if fmt.Sprintf("sha256:%s", artifact.SHA256) == digest {
-				err := registryService.Delete(ctx, name, artifact.Version)
+				err := registryService.Delete(ctx, "oci", name, artifact.Version, user.ID)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete blob"})
 					return
@@ -323,7 +323,7 @@ func handleOCIBlobDelete(registryService *registry.Service) gin.HandlerFunc {
 				return
 			}
 		}
-		
+
 		c.Status(http.StatusNotFound)
 	}
 }
@@ -338,10 +338,10 @@ func handleOCIBlobUploadStart(registryService *registry.Service) gin.HandlerFunc
 		}
 
 		name := c.Param("name")
-		
+
 		// Generate a UUID for the upload session
 		uploadUUID := fmt.Sprintf("upload-%s-%d", name, user.ID)
-		
+
 		c.Header("Location", fmt.Sprintf("/v2/%s/blobs/uploads/%s", name, uploadUUID))
 		c.Header("Range", "0-0")
 		c.Status(http.StatusAccepted)
@@ -364,7 +364,7 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 		}
 
 		name := c.Param("name")
-		uuid := c.Param("uuid")
+		_ = c.Param("uuid") // Upload session UUID - not needed for our implementation
 		digest := c.Query("digest")
 
 		if digest == "" {
@@ -375,7 +375,7 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err := registryService.Upload(ctx, "oci", fmt.Sprintf("%s:%s", name, uuid), c.Request.Body, "application/octet-stream")
+		_, err := registryService.Upload(ctx, "oci", name, digest, c.Request.Body, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -404,13 +404,13 @@ func handleOCITagsList(registryService *registry.Service) gin.HandlerFunc {
 		name := c.Param("name")
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     name,
 			Registry: "oci",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list tags"})
 			return
@@ -431,12 +431,12 @@ func handleOCITagsList(registryService *registry.Service) gin.HandlerFunc {
 func handleOCICatalog(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		
+
 		filter := &types.ArtifactFilter{
 			Registry: "oci",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list repositories"})
 			return

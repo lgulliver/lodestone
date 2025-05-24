@@ -2,7 +2,7 @@ package registry
 
 import (
 	"github.com/lgulliver/lodestone/internal/registry/registries/cargo"
-	"github.com/lgulliver/lodestone/internal/registry/registries/go_registry"
+	goregistry "github.com/lgulliver/lodestone/internal/registry/registries/go"
 	"github.com/lgulliver/lodestone/internal/registry/registries/helm"
 	"github.com/lgulliver/lodestone/internal/registry/registries/maven"
 	"github.com/lgulliver/lodestone/internal/registry/registries/npm"
@@ -28,23 +28,23 @@ func NewFactory(service *Service) *Factory {
 func (f *Factory) GetRegistryHandler(format string) Handler {
 	switch format {
 	case "npm":
-		return npm_registry.New(f.service)
+		return npm.New(f.service.Storage, f.service.DB)
 	case "nuget":
-		return nuget_registry.New(f.service)
+		return nuget.New(f.service.Storage, f.service.DB)
 	case "oci":
-		return oci_registry.New(f.service)
+		return oci.New(f.service.Storage, f.service.DB)
 	case "maven":
-		return maven_registry.New(f.service)
+		return maven.New(f.service.Storage, f.service.DB)
 	case "go":
-		return go_registry.New(f.service)
+		return goregistry.New(f.service.Storage, f.service.DB)
 	case "helm":
-		return helm_registry.New(f.service)
+		return helm.New(f.service.Storage, f.service.DB)
 	case "cargo":
-		return cargo_registry.New(f.service)
+		return cargo.New(f.service.Storage, f.service.DB)
 	case "rubygems":
-		return rubygems_registry.New(f.service)
+		return rubygems.New(f.service.Storage, f.service.DB)
 	case "opa":
-		return opa_registry.New(f.service)
+		return opa.New(f.service.Storage, f.service.DB)
 	default:
 		// Return a generic handler or null handler as fallback
 		return nil

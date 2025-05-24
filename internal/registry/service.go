@@ -17,10 +17,10 @@ import (
 
 // Service handles registry operations
 type Service struct {
-	DB        *common.Database
-	Storage   storage.BlobStorage
-	factory   *Factory
-	handlers  map[string]Handler
+	DB       *common.Database
+	Storage  storage.BlobStorage
+	factory  *Factory
+	handlers map[string]Handler
 }
 
 // NewService creates a new registry service
@@ -33,7 +33,7 @@ func NewService(db *common.Database, storage storage.BlobStorage) *Service {
 
 	// Create registry factory
 	service.factory = NewFactory(service)
-	
+
 	// Register built-in registry handlers
 	service.registerHandlers()
 	return service
@@ -53,7 +53,7 @@ func (s *Service) registerHandlers() {
 		"cargo",
 		"rubygems",
 	}
-	
+
 	for _, format := range formats {
 		s.handlers[format] = s.factory.GetRegistryHandler(format)
 	}
@@ -98,7 +98,7 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 
 	// Check if artifact already exists
 	var existingArtifact types.Artifact
-	if err := s.db.Where("name = ? AND version = ? AND registry = ?", 
+	if err := s.DB.Where("name = ? AND version = ? AND registry = ?",
 		artifact.Name, artifact.Version, artifact.Registry).First(&existingArtifact).Error; err == nil {
 		return nil, fmt.Errorf("artifact %s:%s already exists", name, version)
 	}
@@ -112,9 +112,9 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	}
 
 	// Save to database
-	if err := s.db.Create(artifact).Error; err != nil {
+	if err := s.DB.Create(artifact).Error; err != nil {
 		// Try to clean up stored file on database error
-		s.storage.Delete(ctx, artifact.StoragePath)
+		s.Storage.Delete(ctx, artifact.StoragePath)
 		return nil, fmt.Errorf("failed to save artifact metadata: %w", err)
 	}
 
@@ -130,7 +130,7 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 
 	// Get artifact metadata from database
 	var artifact types.Artifact
-	if err := s.db.Where("name = ? AND version = ? AND registry = ?", 
+	if err := s.DB.Where("name = ? AND version = ? AND registry = ?",
 		name, version, registryType).First(&artifact).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil, fmt.Errorf("artifact not found: %s:%s", name, version)
@@ -139,20 +139,20 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 	}
 
 	// Get content from storage
-	content, err := s.storage.Retrieve(ctx, artifact.StoragePath)
+	content, err := s.Storage.Retrieve(ctx, artifact.StoragePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve artifact: %w", err)
 	}
 
 	// Increment download counter
-	s.db.Model(&artifact).Update("downloads", gorm.Expr("downloads + ?", 1))
+	s.DB.Model(&artifact).Update("downloads", gorm.Expr("downloads + ?", 1))
 
 	return &artifact, content, nil
 }
 
 // List returns artifacts matching the filter
 func (s *Service) List(ctx context.Context, filter *types.ArtifactFilter) ([]*types.Artifact, int64, error) {
-	query := s.db.Model(&types.Artifact{})
+	query := s.DB.Model(&types.Artifact{})
 
 	// Apply filters
 	if filter.Name != "" {
@@ -189,7 +189,7 @@ func (s *Service) List(ctx context.Context, filter *types.ArtifactFilter) ([]*ty
 func (s *Service) Delete(ctx context.Context, registryType, name, version string, userID uuid.UUID) error {
 	// Get artifact
 	var artifact types.Artifact
-	if err := s.db.Where("name = ? AND version = ? AND registry = ?", 
+	if err := s.DB.Where("name = ? AND version = ? AND registry = ?",
 		name, version, registryType).First(&artifact).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return fmt.Errorf("artifact not found: %s:%s", name, version)
@@ -199,7 +199,7 @@ func (s *Service) Delete(ctx context.Context, registryType, name, version string
 
 	// Check permissions (user must be the publisher or an admin)
 	var user types.User
-	if err := s.db.First(&user, userID).Error; err != nil {
+	if err := s.DB.First(&user, userID).Error; err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
@@ -208,12 +208,12 @@ func (s *Service) Delete(ctx context.Context, registryType, name, version string
 	}
 
 	// Delete from storage
-	if err := s.storage.Delete(ctx, artifact.StoragePath); err != nil {
+	if err := s.Storage.Delete(ctx, artifact.StoragePath); err != nil {
 		return fmt.Errorf("failed to delete artifact from storage: %w", err)
 	}
 
 	// Delete from database
-	if err := s.db.Delete(&artifact).Error; err != nil {
+	if err := s.DB.Delete(&artifact).Error; err != nil {
 		return fmt.Errorf("failed to delete artifact from database: %w", err)
 	}
 

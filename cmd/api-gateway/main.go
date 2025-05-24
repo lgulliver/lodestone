@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
-	
+
 	"github.com/lgulliver/lodestone/cmd/api-gateway/routes"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/internal/registry"
@@ -21,11 +21,14 @@ func main() {
 	}
 
 	// Initialize storage backend
-	storageBackend := storage.NewLocal("./storage")
+	storageBackend, err := storage.NewLocalStorage("./storage")
+	if err != nil {
+		log.Fatalf("Failed to initialize storage: %v", err)
+	}
 
 	// Initialize services
-	authService := auth.NewService(nil, nil, nil) // TODO: Add database, cache, and config when implemented
-	registryService := registry.NewService(storageBackend)
+	authService := auth.NewService(nil, nil, nil)               // TODO: Add database, cache, and config when implemented
+	registryService := registry.NewService(nil, storageBackend) // TODO: Add database when implemented
 
 	// Set up Gin router
 	router := gin.Default()
@@ -35,26 +38,26 @@ func main() {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, X-API-Key")
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
 		}
-		
+
 		c.Next()
 	})
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status": "healthy",
+			"status":  "healthy",
 			"service": "lodestone-api-gateway",
 		})
 	})
 
 	// API routes
 	api := router.Group("/api/v1")
-	
+
 	// Set up all package format routes
 	routes.AuthRoutes(api, authService)
 	routes.NuGetRoutes(api, registryService, authService)

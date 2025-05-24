@@ -1,4 +1,4 @@
-package nuget_registry
+package nuget
 
 import (
 	"bytes"
@@ -7,32 +7,35 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lgulliver/lodestone/internal/registry"
+	"github.com/lgulliver/lodestone/internal/common"
+	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // Registry implements the NuGet package registry
 type Registry struct {
-	service *registry.Service
+	storage storage.BlobStorage
+	db      *common.Database
 }
 
 // New creates a new NuGet registry handler
-func New(service *registry.Service) *Registry {
+func New(storage storage.BlobStorage, db *common.Database) *Registry {
 	return &Registry{
-		service: service,
+		storage: storage,
+		db:      db,
 	}
 }
 
 // Upload stores a NuGet package
 func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
 	ctx := context.Background()
-	
+
 	// Store the content
 	reader := bytes.NewReader(content)
-	if err := r.service.Storage.Store(ctx, artifact.StoragePath, reader, "application/octet-stream"); err != nil {
+	if err := r.storage.Store(ctx, artifact.StoragePath, reader, "application/octet-stream"); err != nil {
 		return fmt.Errorf("failed to store NuGet package: %w", err)
 	}
-	
+
 	artifact.ContentType = "application/octet-stream"
 	return nil
 }
@@ -79,9 +82,9 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 	// TODO: Extract metadata from .nuspec file in the package
 	return map[string]interface{}{
-		"format":      "nuget",
-		"type":        "package",
-		"framework":   ".NET",
+		"format":    "nuget",
+		"type":      "package",
+		"framework": ".NET",
 	}, nil
 }
 

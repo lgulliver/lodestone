@@ -17,17 +17,17 @@ import (
 // RubyGemsRoutes sets up RubyGems repository routes
 func RubyGemsRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	gems := api.Group("/gems")
-	
+
 	// RubyGems API
 	gems.GET("/api/v1/gems", handleGemsSearch(registryService))
 	gems.GET("/api/v1/gems/:name.json", handleGemInfo(registryService))
 	gems.GET("/api/v1/versions/:name.json", handleGemVersions(registryService))
 	gems.GET("/gems/:filename", handleGemDownload(registryService))
-	
+
 	// Gem push (requires authentication)
 	gems.POST("/api/v1/gems", middleware.AuthMiddleware(authService), handleGemPush(registryService))
 	gems.DELETE("/api/v1/gems/yank", middleware.AuthMiddleware(authService), handleGemYank(registryService))
-	
+
 	// Specs endpoints for bundler
 	gems.GET("/specs.4.8.gz", handleSpecs(registryService))
 	gems.GET("/latest_specs.4.8.gz", handleLatestSpecs(registryService))
@@ -37,18 +37,18 @@ func RubyGemsRoutes(api *gin.RouterGroup, registryService *registry.Service, aut
 func handleGemsSearch(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := c.Query("query")
-		
+
 		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
-		
+
 		filter := &types.ArtifactFilter{
 			Registry: "rubygems",
 		}
-		
+
 		if query != "" {
 			filter.Name = query
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
 			return
@@ -89,14 +89,14 @@ func handleGemInfo(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     gemName,
 			Registry: "rubygems",
 			Limit:    1, // Get latest version
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get gem info"})
 			return
@@ -119,12 +119,12 @@ func handleGemInfo(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"name":        artifact.Name,
-			"version":     artifact.Version,
-			"description": description,
-			"authors":     author,
-			"gem_uri":     fmt.Sprintf("/gems/%s-%s.gem", artifact.Name, artifact.Version),
-			"homepage_uri": "",
+			"name":            artifact.Name,
+			"version":         artifact.Version,
+			"description":     description,
+			"authors":         author,
+			"gem_uri":         fmt.Sprintf("/gems/%s-%s.gem", artifact.Name, artifact.Version),
+			"homepage_uri":    "",
 			"source_code_uri": "",
 		})
 	}
@@ -139,13 +139,13 @@ func handleGemVersions(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
-		
+
 		filter := &types.ArtifactFilter{
 			Name:     gemName,
 			Registry: "rubygems",
 		}
 
-		artifacts, err := registryService.List(ctx, filter)
+		artifacts, _, err := registryService.List(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get gem versions"})
 			return
@@ -190,8 +190,8 @@ func handleGemDownload(registryService *registry.Service) gin.HandlerFunc {
 		gemName := strings.Join(parts[:len(parts)-1], "-")
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
-		
-		artifact, content, err := registryService.Download(ctx, gemName, version)
+
+		artifact, content, err := registryService.Download(ctx, "rubygems", gemName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "gem not found"})
 			return
@@ -199,7 +199,7 @@ func handleGemDownload(registryService *registry.Service) gin.HandlerFunc {
 
 		c.Header("Content-Type", "application/octet-stream")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-		
+
 		if artifact.Size > 0 {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
@@ -231,7 +231,25 @@ func handleGemPush(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err = registryService.Upload(ctx, "rubygems", header.Filename, file, "application/octet-stream")
+		// Parse RubyGem filename: gemname-version.gem
+		filename := header.Filename
+		if !strings.HasSuffix(filename, ".gem") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "gem file must be .gem format"})
+			return
+		}
+
+		nameVersion := strings.TrimSuffix(filename, ".gem")
+		parts := strings.Split(nameVersion, "-")
+		if len(parts) < 2 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid gem filename format, expected: gemname-version.gem"})
+			return
+		}
+
+		// Last part is version, everything else is gem name
+		version := parts[len(parts)-1]
+		gemName := strings.Join(parts[:len(parts)-1], "-")
+
+		_, err = registryService.Upload(ctx, "rubygems", gemName, version, file, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("upload failed: %v", err)})
 			return
@@ -260,7 +278,7 @@ func handleGemYank(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		err := registryService.Delete(ctx, gemName, version)
+		err := registryService.Delete(ctx, "rubygems", gemName, version, user.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to yank gem"})
 			return
