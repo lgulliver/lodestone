@@ -24,7 +24,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				token := strings.TrimPrefix(authHeader, "Bearer ")
 				ctx := context.WithValue(c.Request.Context(), "token", token)
-				
+
 				user, err := authService.ValidateToken(ctx, token)
 				if err == nil {
 					c.Set("user", user)
@@ -38,7 +38,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 		apiKey := c.GetHeader("X-API-Key")
 		if apiKey != "" {
 			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
-			
+
 			user, _, err := authService.ValidateAPIKey(ctx, apiKey)
 			if err == nil {
 				c.Set("user", user)
@@ -50,7 +50,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 		// Check for API key in query parameter (for some package managers)
 		if apiKey := c.Query("api_key"); apiKey != "" {
 			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
-			
+
 			user, _, err := authService.ValidateAPIKey(ctx, apiKey)
 			if err == nil {
 				c.Set("user", user)
@@ -77,18 +77,18 @@ func optionalAuthMiddlewareWithInterface(authService AuthServiceInterface) gin.H
 		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 			ctx := context.WithValue(c.Request.Context(), "token", token)
-			
+
 			if user, err := authService.ValidateToken(ctx, token); err == nil {
 				c.Set("user", user)
 			}
 		} else if apiKey := c.GetHeader("X-API-Key"); apiKey != "" {
 			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
-			
+
 			if user, _, err := authService.ValidateAPIKey(ctx, apiKey); err == nil {
 				c.Set("user", user)
 			}
 		}
-		
+
 		c.Next()
 	}
 }

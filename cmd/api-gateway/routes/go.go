@@ -21,10 +21,10 @@ func GoRoutes(api *gin.RouterGroup, registryService *registry.Service, authServi
 	// Go module proxy protocol
 	goproxy.GET("/:module/@latest", handleGoLatest(registryService))
 	goproxy.GET("/:module/@v/list", handleGoVersionList(registryService))
-	
+
 	// Handle versioned operations - this will detect file extensions like .info, .mod, .zip
 	goproxy.GET("/:module/@v/:version", handleGoVersionFile(registryService))
-	
+
 	// Module upload and delete (custom extension to Go proxy protocol)
 	goproxy.PUT("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoModuleUpload(registryService))
 	goproxy.DELETE("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoModuleDelete(registryService))
@@ -77,7 +77,7 @@ func handleGoVersionFile(registryService *registry.Service) gin.HandlerFunc {
 		if len(parts) < 2 {
 			// If no file extension, treat as regular version download (.zip)
 			version := versionParam
-			
+
 			// Handle .zip download
 			artifact, content, err := registryService.Download(c.Request.Context(), "go", module, version)
 			if err != nil {

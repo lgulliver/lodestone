@@ -12,19 +12,19 @@ import (
 
 func TestOPARoutes_Setup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	router := gin.New()
 	api := router.Group("/api")
-	
+
 	// Create empty services just for route registration testing
 	realRegistry := &registry.Service{}
 	realAuth := &auth.Service{}
-	
+
 	// This tests that the route setup doesn't panic
 	assert.NotPanics(t, func() {
 		OPARoutes(api, realRegistry, realAuth)
 	})
-	
+
 	// Test that routes are registered by checking the gin router has routes
 	routes := router.Routes()
 	found := false

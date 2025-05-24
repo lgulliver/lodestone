@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
