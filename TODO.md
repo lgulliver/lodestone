@@ -1,10 +1,10 @@
 # List of todo items
 
 - [x] Move logging to use zerolog
-- [ ] Create auth service
-  - [ ] Local accounts
+- [x] Create auth service
+  - [x] Local accounts
   - [ ] OIDC accounts (Microsoft, Google, GitHub) (doesn't need doing now)
-- [ ] Base registry service
+- [x] Base registry service
 - [ ] NuGet registry
 - [ ] Cargo registry
 - [ ] npm registry
@@ -17,6 +17,7 @@
 - [ ] Ensure only owners of a package can modify a package
 - [ ] UI
 - [ ] Ensure commands like `docker pull` work against the registry
+- [ ] Fix any issues flagged by problems
 
 ## High Priority Implementation Tasks
 
@@ -28,10 +29,10 @@
 - [ ] Implement security testing for authentication flows
 
 ### Database & Storage
-- [ ] Complete database integration for metadata and user management
-- [ ] Design and implement database schema and migrations
+- [x] Complete database integration for metadata and user management
+- [x] Design and implement database schema and migrations
 - [ ] Configure storage backend (local/S3/Azure/GCP)
-- [ ] Implement proper storage path generation algorithms
+- [x] Implement proper storage path generation algorithms
 
 ### Registry Implementations
 - [ ] Complete all registry handler implementations (some are currently stubs)

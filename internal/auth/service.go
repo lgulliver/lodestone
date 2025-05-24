@@ -111,11 +111,13 @@ func (s *Service) Login(ctx context.Context, req *types.LoginRequest) (*types.Au
 		UserID:    user.ID,
 	}
 
-	// Cache the token
-	cacheKey := fmt.Sprintf("token:%s", user.ID.String())
-	if err := s.cache.Set(ctx, cacheKey, authToken, s.config.JWTExpiration); err != nil {
-		// Log error but don't fail the login
-		fmt.Printf("Failed to cache token: %v\n", err)
+	// Cache the token if cache is available
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("token:%s", user.ID.String())
+		if err := s.cache.Set(ctx, cacheKey, authToken, s.config.JWTExpiration); err != nil {
+			// Log error but don't fail the login
+			log.Warn().Err(err).Msg("Failed to cache token")
+		}
 	}
 
 	return authToken, nil
@@ -129,14 +131,17 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*types
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}
 
-	// Try cache first
-	cacheKey := fmt.Sprintf("user:%s", userID.String())
-	var user types.User
-	if err := s.cache.Get(ctx, cacheKey, &user); err == nil {
-		return &user, nil
+	// Try cache first if available
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("user:%s", userID.String())
+		var user types.User
+		if err := s.cache.Get(ctx, cacheKey, &user); err == nil {
+			return &user, nil
+		}
 	}
 
 	// Get user from database
+	var user types.User
 	if err := s.db.Where("id = ? AND is_active = ?", userID, true).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("user not found")
@@ -144,9 +149,12 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*types
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Cache user for future requests
-	if err := s.cache.Set(ctx, cacheKey, &user, 10*time.Minute); err != nil {
-		fmt.Printf("Failed to cache user: %v\n", err)
+	// Cache user for future requests if cache is available
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("user:%s", userID.String())
+		if err := s.cache.Set(ctx, cacheKey, &user, 10*time.Minute); err != nil {
+			log.Warn().Err(err).Msg("Failed to cache user")
+		}
 	}
 
 	user.Password = "" // Remove password from response

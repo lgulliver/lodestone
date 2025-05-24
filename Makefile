@@ -49,6 +49,23 @@ test-quick: ## Run tests without coverage
 	@echo "Running quick tests..."
 	@go test -v ./...
 
+# Database operations
+migrate-up: ## Run database migrations
+	@echo "Running database migrations..."
+	@go run ./cmd/migrate -up
+	@echo "Migrations complete!"
+
+migrate-down: ## Roll back the last migration
+	@echo "Rolling back last migration..."
+	@go run ./cmd/migrate -down
+	@echo "Rollback complete!"
+
+migrate-build: ## Build migration tool
+	@echo "Building migration tool..."
+	@mkdir -p $(BINARY_DIR)
+	@go build -o $(BINARY_DIR)/migrate ./cmd/migrate
+	@echo "Migration tool built!"
+
 # Format code
 fmt: ## Format code
 	@echo "Formatting code..."
@@ -121,15 +138,6 @@ swagger: ## Generate Swagger documentation
 	else \
 		echo "swag not installed. Install with: go install github.com/swaggo/swag/cmd/swag@latest"; \
 	fi
-
-# Database migrations
-migrate-up: ## Run database migrations up
-	@echo "Running database migrations..."
-	# TODO: Add migration tool commands
-
-migrate-down: ## Run database migrations down
-	@echo "Rolling back database migrations..."
-	# TODO: Add migration tool commands
 
 # Security scan
 security: ## Run security scan

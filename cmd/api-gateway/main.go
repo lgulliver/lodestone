@@ -8,6 +8,7 @@ import (
 
 	"github.com/lgulliver/lodestone/cmd/api-gateway/routes"
 	"github.com/lgulliver/lodestone/internal/auth"
+	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/config"
@@ -18,15 +19,35 @@ func main() {
 	cfg := config.LoadFromEnv()
 	cfg.Logging.SetupLogging()
 
+	// Initialize database connection
+	database, err := common.NewDatabase(&cfg.Database)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to database")
+	}
+	defer database.Close()
+
+	// Run database migrations automatically
+	if err := database.Migrate(); err != nil {
+		log.Fatal().Err(err).Msg("Failed to run database migrations")
+	}
+	log.Info().Msg("Database migrations completed successfully")
+
+	// Initialize cache (Redis)
+	cache, err := common.NewCache(&cfg.Redis)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to connect to Redis cache, continuing without cache")
+		cache = nil // Optional component
+	}
+
 	// Initialize storage backend
 	storageBackend, err := storage.NewLocalStorage("./storage")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize storage")
 	}
 
-	// Initialize services
-	authService := auth.NewService(nil, nil, nil)               // TODO: Add database, cache, and config when implemented
-	registryService := registry.NewService(nil, storageBackend) // TODO: Add database when implemented
+	// Initialize services with database connections
+	authService := auth.NewService(database, cache, &cfg.Auth)
+	registryService := registry.NewService(database, storageBackend)
 
 	// Set up Gin router
 	router := gin.Default()
