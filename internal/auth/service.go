@@ -10,6 +10,7 @@ import (
 	"github.com/lgulliver/lodestone/pkg/config"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/lgulliver/lodestone/pkg/utils"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
 
@@ -31,15 +32,19 @@ func NewService(db *common.Database, cache *common.Cache, config *config.AuthCon
 
 // Register creates a new user account
 func (s *Service) Register(ctx context.Context, req *types.RegisterRequest) (*types.User, error) {
+	log.Info().Str("username", req.Username).Str("email", req.Email).Msg("Attempting user registration")
+
 	// Check if user already exists
 	var existingUser types.User
 	if err := s.db.Where("username = ? OR email = ?", req.Username, req.Email).First(&existingUser).Error; err == nil {
+		log.Warn().Str("username", req.Username).Str("email", req.Email).Msg("Registration failed: user already exists")
 		return nil, fmt.Errorf("user with username or email already exists")
 	}
 
 	// Hash password
 	hashedPassword, err := utils.HashPassword(req.Password, s.config.BCryptCost)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to hash password during registration")
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
@@ -53,8 +58,11 @@ func (s *Service) Register(ctx context.Context, req *types.RegisterRequest) (*ty
 	}
 
 	if err := s.db.Create(user).Error; err != nil {
+		log.Error().Err(err).Str("username", req.Username).Msg("Failed to create user in database")
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
+
+	log.Info().Str("username", user.Username).Str("user_id", user.ID.String()).Msg("User registration successful")
 
 	// Remove password from response
 	user.Password = ""
@@ -63,30 +71,39 @@ func (s *Service) Register(ctx context.Context, req *types.RegisterRequest) (*ty
 
 // Login authenticates a user and returns a JWT token
 func (s *Service) Login(ctx context.Context, req *types.LoginRequest) (*types.AuthToken, error) {
+	log.Info().Str("username", req.Username).Msg("Login attempt")
+
 	// Find user
 	var user types.User
 	if err := s.db.Where("username = ?", req.Username).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Warn().Str("username", req.Username).Msg("Login failed: user not found")
 			return nil, fmt.Errorf("invalid credentials")
 		}
+		log.Error().Err(err).Str("username", req.Username).Msg("Database error during login")
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	// Check if user is active
 	if !user.IsActive {
+		log.Warn().Str("username", req.Username).Msg("Login failed: user account disabled")
 		return nil, fmt.Errorf("user account is disabled")
 	}
 
 	// Verify password
 	if !utils.CheckPassword(req.Password, user.Password) {
+		log.Warn().Str("username", req.Username).Msg("Login failed: invalid password")
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
 	// Generate JWT token
 	token, err := utils.GenerateJWT(user.ID, s.config.JWTSecret, s.config.JWTExpiration)
 	if err != nil {
+		log.Error().Err(err).Str("username", req.Username).Msg("Failed to generate JWT token")
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
+
+	log.Info().Str("username", req.Username).Str("user_id", user.ID.String()).Msg("Login successful")
 
 	authToken := &types.AuthToken{
 		Token:     token,

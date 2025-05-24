@@ -9,6 +9,7 @@ import (
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/pkg/types"
+	"github.com/rs/zerolog/log"
 )
 
 // AuthRoutes sets up authentication-related routes
@@ -29,19 +30,45 @@ func AuthRoutes(api *gin.RouterGroup, authService *auth.Service) {
 
 func handleRegister(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			requestID = uuid.New().String()
+		}
+
+		log.Info().
+			Str("request_id", requestID).
+			Str("endpoint", "POST /auth/register").
+			Str("client_ip", c.ClientIP()).
+			Msg("Registration request received")
+
 		var req types.RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Warn().
+				Str("request_id", requestID).
+				Err(err).
+				Msg("Invalid registration request body")
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "request_id", c.GetHeader("X-Request-ID"))
+		ctx := context.WithValue(c.Request.Context(), "request_id", requestID)
 
 		user, err := authService.Register(ctx, &req)
 		if err != nil {
+			log.Error().
+				Str("request_id", requestID).
+				Str("username", req.Username).
+				Err(err).
+				Msg("Registration failed")
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		log.Info().
+			Str("request_id", requestID).
+			Str("username", user.Username).
+			Str("user_id", user.ID.String()).
+			Msg("Registration successful")
 
 		c.JSON(http.StatusCreated, gin.H{
 			"user": gin.H{

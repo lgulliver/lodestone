@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/pkg/types"
+	"github.com/rs/zerolog/log"
 )
 
 // AuthMiddleware validates JWT tokens and API keys
@@ -37,28 +38,38 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 		// Check for API key in X-API-Key header
 		apiKey := c.GetHeader("X-API-Key")
 		if apiKey != "" {
+			log.Debug().Str("path", c.Request.URL.Path).Msg("Validating API key from header")
 			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
 
 			user, _, err := authService.ValidateAPIKey(ctx, apiKey)
 			if err == nil {
+				log.Debug().Str("username", user.Username).Msg("API key validation successful")
 				c.Set("user", user)
 				c.Next()
 				return
 			}
+			log.Warn().Err(err).Msg("API key validation failed")
 		}
 
 		// Check for API key in query parameter (for some package managers)
 		if apiKey := c.Query("api_key"); apiKey != "" {
+			log.Debug().Str("path", c.Request.URL.Path).Msg("Validating API key from query parameter")
 			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
 
 			user, _, err := authService.ValidateAPIKey(ctx, apiKey)
 			if err == nil {
+				log.Debug().Str("username", user.Username).Msg("API key validation successful")
 				c.Set("user", user)
 				c.Next()
 				return
 			}
+			log.Warn().Err(err).Msg("API key validation failed")
 		}
 
+		log.Warn().
+			Str("path", c.Request.URL.Path).
+			Str("client_ip", c.ClientIP()).
+			Msg("Unauthorized access attempt")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		c.Abort()
 	}

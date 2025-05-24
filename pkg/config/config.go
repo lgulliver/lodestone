@@ -5,6 +5,9 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 // Config holds the configuration for all services
@@ -125,6 +128,29 @@ func (r *RedisConfig) RedisAddr() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
 
+// SetupLogging configures zerolog based on the LoggingConfig
+func (c *LoggingConfig) SetupLogging() {
+	// Set log level
+	switch c.Level {
+	case "debug":
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case "info":
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case "warn":
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case "error":
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
+
+	// Set log format
+	if c.Format == "text" || c.Format == "console" {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
+	// Default is JSON format, which is already set by zerolog
+}
+
 // Helper functions for environment variable parsing
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
@@ -149,4 +175,10 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
+}
+
+// InitLogger initializes the zerolog logger
+func InitLogger() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 }

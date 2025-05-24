@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
 	"github.com/lgulliver/lodestone/pkg/types"
@@ -16,9 +17,19 @@ import (
 
 // RecordDownload records a download event for analytics
 func (s *Service) RecordDownload(ctx context.Context, artifactID uuid.UUID, userID *uuid.UUID, ipAddress, userAgent string) error {
+	log.Debug().
+		Str("artifact_id", artifactID.String()).
+		Str("ip_address", ipAddress).
+		Str("user_agent", userAgent).
+		Msg("Recording download event")
+
 	// Get artifact info
 	var artifact types.Artifact
 	if err := s.db.WithContext(ctx).First(&artifact, artifactID).Error; err != nil {
+		log.Error().
+			Err(err).
+			Str("artifact_id", artifactID.String()).
+			Msg("Failed to get artifact for download recording")
 		return fmt.Errorf("failed to get artifact: %w", err)
 	}
 
@@ -243,8 +254,8 @@ func (s *Service) GetSearchSuggestions(ctx context.Context, query string, limit 
 
 	// Artifact name suggestions
 	var artifacts []struct {
-		Name     string
-		Registry string
+		Name      string
+		Registry  string
 		Downloads int64
 	}
 
@@ -253,9 +264,9 @@ func (s *Service) GetSearchSuggestions(ctx context.Context, query string, limit 
 		Select("name, registry, downloads").
 		Where("LOWER(name) LIKE ? AND is_public = ?", searchTerm, true).
 		Order("downloads DESC").
-		Limit(limit/2).
+		Limit(limit / 2).
 		Scan(&artifacts).Error; err == nil {
-		
+
 		for _, artifact := range artifacts {
 			suggestions = append(suggestions, SearchSuggestion{
 				Text:     artifact.Name,
@@ -279,9 +290,9 @@ func (s *Service) GetSearchSuggestions(ctx context.Context, query string, limit 
 		Where("LOWER(users.username) LIKE ? AND artifacts.is_public = ?", searchTerm, true).
 		Group("users.username").
 		Order("count DESC").
-		Limit(limit/4).
+		Limit(limit / 4).
 		Scan(&authors).Error; err == nil {
-		
+
 		for _, author := range authors {
 			suggestions = append(suggestions, SearchSuggestion{
 				Text:  author.Username,
@@ -311,7 +322,7 @@ func (s *Service) GetSearchSuggestions(ctx context.Context, query string, limit 
 			LIMIT ?
 		`, searchTerm, limit/4).
 		Scan(&tags).Error; err == nil {
-		
+
 		for _, tag := range tags {
 			suggestions = append(suggestions, SearchSuggestion{
 				Text:  tag.Tag,
@@ -412,7 +423,7 @@ func (s *Service) getRecentActivity(ctx context.Context, query *StatsQuery) ([]A
 
 	uploadDB := s.db.WithContext(ctx).
 		Model(&types.Artifact{}).
-		Select(fmt.Sprintf("%s as date, COUNT(*) as uploads", 
+		Select(fmt.Sprintf("%s as date, COUNT(*) as uploads",
 			strings.Replace(groupByFormat, "timestamp", "created_at", 1))).
 		Where("created_at >= ? AND created_at <= ?", startDate, endDate).
 		Group("date").
@@ -491,7 +502,7 @@ func (s *Service) getRegistryBreakdown(ctx context.Context, registry string) (ma
 			Group("registry").
 			Order("count DESC").
 			Scan(&registryBreakdown).Error; err == nil {
-			
+
 			for _, rb := range registryBreakdown {
 				breakdown[rb.Registry] = rb.Count
 			}
@@ -527,7 +538,7 @@ func (s *Service) getFrameworkTargets(ctx context.Context) map[string]int64 {
 		Target string
 		Count  int64
 	}
-	
+
 	s.db.WithContext(ctx).
 		Raw(`
 			SELECT target, COUNT(*) as count
@@ -570,7 +581,7 @@ func (s *Service) getPackageTypes(ctx context.Context) map[string]int64 {
 
 func (s *Service) getTopGroupIds(ctx context.Context) []string {
 	var groupIds []string
-	
+
 	s.db.WithContext(ctx).
 		Model(&types.Artifact{}).
 		Where("registry = ?", "maven").

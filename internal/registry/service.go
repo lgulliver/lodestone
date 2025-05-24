@@ -12,6 +12,7 @@ import (
 	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/lgulliver/lodestone/pkg/utils"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
 
@@ -61,17 +62,31 @@ func (s *Service) registerHandlers() {
 
 // Upload handles artifact upload
 func (s *Service) Upload(ctx context.Context, registryType, name, version string, content io.Reader, publishedBy uuid.UUID) (*types.Artifact, error) {
+	log.Info().
+		Str("registry_type", registryType).
+		Str("name", name).
+		Str("version", version).
+		Str("published_by", publishedBy.String()).
+		Msg("Starting artifact upload")
+
 	// Get registry handler
 	handler, exists := s.handlers[registryType]
 	if !exists {
+		log.Error().Str("registry_type", registryType).Msg("Unsupported registry type")
 		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
 	}
 
 	// Read content into memory for processing
 	contentBytes, err := io.ReadAll(content)
 	if err != nil {
+		log.Error().Err(err).Str("name", name).Msg("Failed to read artifact content")
 		return nil, fmt.Errorf("failed to read content: %w", err)
 	}
+
+	log.Debug().
+		Str("name", name).
+		Int("content_size", len(contentBytes)).
+		Msg("Artifact content read successfully")
 
 	// Create artifact object
 	artifact := &types.Artifact{

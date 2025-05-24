@@ -1,29 +1,27 @@
 package main
 
 import (
-	"log"
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 
 	"github.com/lgulliver/lodestone/cmd/api-gateway/routes"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/internal/storage"
+	"github.com/lgulliver/lodestone/pkg/config"
 )
 
 func main() {
-	// Set up logging
-	logrus.SetLevel(logrus.InfoLevel)
-	if os.Getenv("DEBUG") == "true" {
-		logrus.SetLevel(logrus.DebugLevel)
-	}
+	// Load configuration and set up logging
+	cfg := config.LoadFromEnv()
+	cfg.Logging.SetupLogging()
 
 	// Initialize storage backend
 	storageBackend, err := storage.NewLocalStorage("./storage")
 	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+		log.Fatal().Err(err).Msg("Failed to initialize storage")
 	}
 
 	// Initialize services
@@ -76,8 +74,8 @@ func main() {
 		port = "8080"
 	}
 
-	logrus.Infof("Starting Lodestone API Gateway on port %s", port)
+	log.Info().Str("port", port).Msg("Starting Lodestone API Gateway")
 	if err := router.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+		log.Fatal().Err(err).Msg("Failed to start server")
 	}
 }
