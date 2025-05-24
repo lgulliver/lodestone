@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/lodestone/pkg/types"
+	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // RecordDownload records a download event for analytics
@@ -374,17 +374,13 @@ func (s *Service) getRecentActivity(ctx context.Context, query *StatsQuery) ([]A
 
 	// Group by day/week/month based on query
 	var groupByFormat string
-	var interval string
 	switch query.GroupBy {
 	case "week":
 		groupByFormat = "DATE_TRUNC('week', timestamp)"
-		interval = "1 week"
 	case "month":
 		groupByFormat = "DATE_TRUNC('month', timestamp)"
-		interval = "1 month"
 	default:
 		groupByFormat = "DATE_TRUNC('day', timestamp)"
-		interval = "1 day"
 	}
 
 	// Get download activity

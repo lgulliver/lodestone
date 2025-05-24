@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -151,4 +152,14 @@ func FormatBytes(bytes int64) string {
 	
 	suffixes := []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
 	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), suffixes[exp])
+}
+
+// DecodeBase64 decodes a base64 encoded string
+func DecodeBase64(encoded string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(encoded)
+}
+
+// generateUploadUUID generates a UUID for upload sessions
+func generateUploadUUID() string {
+	return uuid.New().String()
 }

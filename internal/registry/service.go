@@ -17,19 +17,23 @@ import (
 
 // Service handles registry operations
 type Service struct {
-	db        *common.Database
-	storage   storage.BlobStorage
-	registries map[string]types.Registry
+	DB        *common.Database
+	Storage   storage.BlobStorage
+	factory   *Factory
+	handlers  map[string]Handler
 }
 
 // NewService creates a new registry service
 func NewService(db *common.Database, storage storage.BlobStorage) *Service {
 	service := &Service{
-		db:         db,
-		storage:    storage,
-		registries: make(map[string]types.Registry),
+		DB:       db,
+		Storage:  storage,
+		handlers: make(map[string]Handler),
 	}
 
+	// Create registry factory
+	service.factory = NewFactory(service)
+	
 	// Register built-in registry handlers
 	service.registerHandlers()
 	return service
@@ -37,21 +41,28 @@ func NewService(db *common.Database, storage storage.BlobStorage) *Service {
 
 // registerHandlers registers all supported registry types
 func (s *Service) registerHandlers() {
-	s.registries["nuget"] = &NuGetRegistry{service: s}
-	s.registries["npm"] = &NPMRegistry{service: s}
-	s.registries["maven"] = &MavenRegistry{service: s}
-	s.registries["go"] = &GoRegistry{service: s}
-	s.registries["helm"] = &HelmRegistry{service: s}
-	s.registries["oci"] = &OCIRegistry{service: s}
-	s.registries["opa"] = &OPARegistry{service: s}
-	s.registries["cargo"] = &CargoRegistry{service: s}
-	s.registries["rubygems"] = &RubyGemsRegistry{service: s}
+	// Register handlers for all supported registries
+	formats := []string{
+		"nuget",
+		"npm",
+		"maven",
+		"go",
+		"helm",
+		"oci",
+		"opa",
+		"cargo",
+		"rubygems",
+	}
+	
+	for _, format := range formats {
+		s.handlers[format] = s.factory.GetRegistryHandler(format)
+	}
 }
 
 // Upload handles artifact upload
 func (s *Service) Upload(ctx context.Context, registryType, name, version string, content io.Reader, publishedBy uuid.UUID) (*types.Artifact, error) {
 	// Get registry handler
-	registry, exists := s.registries[registryType]
+	handler, exists := s.handlers[registryType]
 	if !exists {
 		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
 	}
@@ -74,12 +85,12 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	}
 
 	// Validate with registry-specific handler
-	if err := registry.Validate(artifact, contentBytes); err != nil {
+	if err := handler.Validate(artifact, contentBytes); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
 	// Extract metadata
-	metadata, err := registry.GetMetadata(contentBytes)
+	metadata, err := handler.GetMetadata(contentBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract metadata: %w", err)
 	}
@@ -93,10 +104,10 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	}
 
 	// Generate storage path
-	artifact.StoragePath = s.generateStoragePath(registryType, name, version)
+	artifact.StoragePath = handler.GenerateStoragePath(name, version)
 
 	// Store the artifact
-	if err := registry.Upload(artifact, contentBytes); err != nil {
+	if err := handler.Upload(artifact, contentBytes); err != nil {
 		return nil, fmt.Errorf("failed to upload artifact: %w", err)
 	}
 
@@ -112,9 +123,8 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 
 // Download handles artifact download
 func (s *Service) Download(ctx context.Context, registryType, name, version string) (*types.Artifact, io.ReadCloser, error) {
-	// Get registry handler
-	registry, exists := s.registries[registryType]
-	if !exists {
+	// Check if registry type is supported
+	if _, exists := s.handlers[registryType]; !exists {
 		return nil, nil, fmt.Errorf("unsupported registry type: %s", registryType)
 	}
 
@@ -219,10 +229,10 @@ func (s *Service) generateStoragePath(registryType, name, version string) string
 }
 
 // GetRegistry returns a registry handler by type
-func (s *Service) GetRegistry(registryType string) (types.Registry, error) {
-	registry, exists := s.registries[registryType]
+func (s *Service) GetRegistry(registryType string) (Handler, error) {
+	handler, exists := s.handlers[registryType]
 	if !exists {
 		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
 	}
-	return registry, nil
+	return handler, nil
 }

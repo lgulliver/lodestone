@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/lodestone/pkg/config"
-	"github.com/lodestone/pkg/types"
+	"github.com/lgulliver/lodestone/pkg/config"
+	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // Service handles metadata operations including search and indexing
@@ -200,7 +199,6 @@ func (s *Service) IndexArtifact(ctx context.Context, artifact *types.Artifact) e
 
 	// Upsert the index entry
 	if err := s.db.WithContext(ctx).
-		Clauses(gorm.Clause{}).
 		Where("artifact_id = ?", artifact.ID).
 		Assign(index).
 		FirstOrCreate(index).Error; err != nil {
@@ -229,8 +227,6 @@ func (s *Service) GetDownloadStats(ctx context.Context, artifactID uuid.UUID) (*
 
 	// Get recent download activity (you might want to implement a downloads table)
 	now := time.Now()
-	thirtyDaysAgo := now.AddDate(0, 0, -30)
-	sevenDaysAgo := now.AddDate(0, 0, -7)
 
 	// For now, we'll simulate this - in production you'd track individual downloads
 	stats := &DownloadStats{

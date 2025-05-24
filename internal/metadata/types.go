@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lodestone/pkg/types"
+	"github.com/lgulliver/lodestone/pkg/types"
 )
 
 // SearchQuery represents a search request

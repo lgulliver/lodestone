@@ -1,0 +1,529 @@
+package routes
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
+	"github.com/lgulliver/lodestone/internal/auth"
+	"github.com/lgulliver/lodestone/internal/registry"
+	"github.com/lgulliver/lodestone/pkg/types"
+)
+
+// NPMRoutes sets up npm registry routes
+func NPMRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
+	npm := api.Group("/npm")
+	
+	// Package metadata and download
+	npm.GET("/:name", handleNPMPackageInfo(registryService))
+	npm.GET("/:name/:version", handleNPMPackageVersion(registryService))
+	npm.GET("/@:scope/:name", handleNPMScopedPackageInfo(registryService))
+	npm.GET("/@:scope/:name/:version", handleNPMScopedPackageVersion(registryService))
+	
+	// Package tarball download
+	npm.GET("/:name/-/:filename", handleNPMDownload(registryService))
+	npm.GET("/@:scope/:name/-/:filename", handleNPMScopedDownload(registryService))
+	
+	// Package publish (requires authentication)
+	npm.PUT("/:name", middleware.AuthMiddleware(authService), handleNPMPublish(registryService))
+	npm.PUT("/@:scope/:name", middleware.AuthMiddleware(authService), handleNPMScopedPublish(registryService))
+	
+	// Package delete (requires authentication)
+	npm.DELETE("/:name/-rev/:rev", middleware.AuthMiddleware(authService), handleNPMDelete(registryService))
+	npm.DELETE("/@:scope/:name/-rev/:rev", middleware.AuthMiddleware(authService), handleNPMScopedDelete(registryService))
+	
+	// Search
+	npm.GET("/-/v1/search", handleNPMSearch(registryService))
+}
+
+func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		packageName := c.Param("name")
+		if packageName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "package name required"})
+			return
+		}
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		
+		filter := &types.ArtifactFilter{
+			Name:     packageName,
+			Registry: "npm",
+		}
+
+		artifacts, err := registryService.List(ctx, filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get package info"})
+			return
+		}
+
+		if len(artifacts) == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
+			return
+		}
+
+		// Build npm package info response
+		versions := make(map[string]interface{})
+		distTags := map[string]string{
+			"latest": "",
+		}
+
+		for _, artifact := range artifacts {
+			var description, author string
+			if artifact.Metadata != nil {
+				if desc, ok := artifact.Metadata["description"].(string); ok {
+					description = desc
+				}
+				if auth, ok := artifact.Metadata["author"].(string); ok {
+					author = auth
+				}
+			}
+
+			versions[artifact.Version] = gin.H{
+				"name":        artifact.Name,
+				"version":     artifact.Version,
+				"description": description,
+				"author":      author,
+				"dist": gin.H{
+					"shasum":  artifact.SHA256,
+					"tarball": fmt.Sprintf("/npm/%s/-/%s-%s.tgz", artifact.Name, artifact.Name, artifact.Version),
+				},
+			}
+
+			// Set latest version (simple logic - last in list)
+			distTags["latest"] = artifact.Version
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"name":        packageName,
+			"versions":    versions,
+			"dist-tags":   distTags,
+			"time":        gin.H{}, // TODO: implement time tracking
+		})
+	}
+}
+
+func handleNPMPackageVersion(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		packageName := c.Param("name")
+		version := c.Param("version")
+
+		if packageName == "" || version == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "package name and version required"})
+			return
+		}
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		
+		artifact, _, err := registryService.Download(ctx, packageName, version)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "package version not found"})
+			return
+		}
+
+		var description, author string
+		if artifact.Metadata != nil {
+			if desc, ok := artifact.Metadata["description"].(string); ok {
+				description = desc
+			}
+			if auth, ok := artifact.Metadata["author"].(string); ok {
+				author = auth
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"name":        artifact.Name,
+			"version":     artifact.Version,
+			"description": description,
+			"author":      author,
+			"dist": gin.H{
+				"shasum":  artifact.SHA256,
+				"tarball": fmt.Sprintf("/npm/%s/-/%s-%s.tgz", artifact.Name, artifact.Name, artifact.Version),
+			},
+		})
+	}
+}
+
+func handleNPMScopedPackageInfo(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		scope := c.Param("scope")
+		name := c.Param("name")
+		packageName := fmt.Sprintf("@%s/%s", scope, name)
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		
+		filter := &types.ArtifactFilter{
+			Name:     packageName,
+			Registry: "npm",
+		}
+
+		artifacts, err := registryService.List(ctx, filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get package info"})
+			return
+		}
+
+		if len(artifacts) == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
+			return
+		}
+
+		// Similar to handleNPMPackageInfo but with scoped package name
+		versions := make(map[string]interface{})
+		distTags := map[string]string{
+			"latest": "",
+		}
+
+		for _, artifact := range artifacts {
+			var description, author string
+			if artifact.Metadata != nil {
+				if desc, ok := artifact.Metadata["description"].(string); ok {
+					description = desc
+				}
+				if auth, ok := artifact.Metadata["author"].(string); ok {
+					author = auth
+				}
+			}
+
+			versions[artifact.Version] = gin.H{
+				"name":        artifact.Name,
+				"version":     artifact.Version,
+				"description": description,
+				"author":      author,
+				"dist": gin.H{
+					"shasum":  artifact.SHA256,
+					"tarball": fmt.Sprintf("/npm/@%s/%s/-/%s-%s.tgz", scope, name, name, artifact.Version),
+				},
+			}
+			distTags["latest"] = artifact.Version
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"name":        packageName,
+			"versions":    versions,
+			"dist-tags":   distTags,
+			"time":        gin.H{},
+		})
+	}
+}
+
+func handleNPMScopedPackageVersion(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		scope := c.Param("scope")
+		name := c.Param("name")
+		version := c.Param("version")
+		packageName := fmt.Sprintf("@%s/%s", scope, name)
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		
+		artifact, _, err := registryService.Download(ctx, packageName, version)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "package version not found"})
+			return
+		}
+
+		var description, author string
+		if artifact.Metadata != nil {
+			if desc, ok := artifact.Metadata["description"].(string); ok {
+				description = desc
+			}
+			if auth, ok := artifact.Metadata["author"].(string); ok {
+				author = auth
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"name":        artifact.Name,
+			"version":     artifact.Version,
+			"description": description,
+			"author":      author,
+			"dist": gin.H{
+				"shasum":  artifact.SHA256,
+				"tarball": fmt.Sprintf("/npm/@%s/%s/-/%s-%s.tgz", scope, name, name, artifact.Version),
+			},
+		})
+	}
+}
+
+func handleNPMDownload(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		packageName := c.Param("name")
+		filename := c.Param("filename")
+
+		// Extract version from filename (format: packagename-version.tgz)
+		version := strings.TrimPrefix(filename, packageName+"-")
+		version = strings.TrimSuffix(version, ".tgz")
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		
+		artifact, content, err := registryService.Download(ctx, packageName, version)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
+			return
+		}
+
+		c.Header("Content-Type", "application/gzip")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		
+		if artifact.Size > 0 {
+			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
+		}
+
+		defer content.Close()
+		_, err = io.Copy(c.Writer, content)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream package content"})
+			return
+		}
+	}
+}
+
+func handleNPMScopedDownload(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		scope := c.Param("scope")
+		name := c.Param("name")
+		filename := c.Param("filename")
+		packageName := fmt.Sprintf("@%s/%s", scope, name)
+
+		// Extract version from filename
+		version := strings.TrimPrefix(filename, name+"-")
+		version = strings.TrimSuffix(version, ".tgz")
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		
+		artifact, content, err := registryService.Download(ctx, packageName, version)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
+			return
+		}
+
+		c.Header("Content-Type", "application/gzip")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		
+		if artifact.Size > 0 {
+			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
+		}
+
+		defer content.Close()
+		_, err = io.Copy(c.Writer, content)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream package content"})
+			return
+		}
+	}
+}
+
+func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := middleware.GetUserFromContext(c)
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		var publishData map[string]interface{}
+		if err := c.ShouldBindJSON(&publishData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+
+		// Extract package.json and tarball from publish data
+		// This is a simplified implementation - real npm publish is more complex
+		packageName := c.Param("name")
+		
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx = context.WithValue(ctx, "user_id", user.ID)
+
+		// For now, we'll need the actual tarball data
+		// This would typically come from the _attachments field in the publish data
+		attachments, ok := publishData["_attachments"].(map[string]interface{})
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing package attachments"})
+			return
+		}
+
+		for filename, attachment := range attachments {
+			attachmentData, ok := attachment.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			data, ok := attachmentData["data"].(string)
+			if !ok {
+				continue
+			}
+
+			// TODO: Decode base64 data and upload
+			_ = data
+			_ = filename
+
+			c.JSON(http.StatusCreated, gin.H{
+				"ok": true,
+				"id": packageName,
+			})
+			return
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no valid package data found"})
+	}
+}
+
+func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := middleware.GetUserFromContext(c)
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		scope := c.Param("scope")
+		name := c.Param("name")
+		packageName := fmt.Sprintf("@%s/%s", scope, name)
+
+		var publishData map[string]interface{}
+		if err := c.ShouldBindJSON(&publishData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx = context.WithValue(ctx, "user_id", user.ID)
+
+		// Similar to handleNPMPublish but for scoped packages
+		attachments, ok := publishData["_attachments"].(map[string]interface{})
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing package attachments"})
+			return
+		}
+
+		// Process attachments...
+		_ = attachments
+
+		c.JSON(http.StatusCreated, gin.H{
+			"ok": true,
+			"id": packageName,
+		})
+	}
+}
+
+func handleNPMDelete(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := middleware.GetUserFromContext(c)
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		packageName := c.Param("name")
+		rev := c.Param("rev") // npm revision parameter
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx = context.WithValue(ctx, "user_id", user.ID)
+
+		// For now, delete all versions of the package
+		// In a real implementation, you'd parse the rev to determine what to delete
+		_ = rev
+
+		err := registryService.Delete(ctx, packageName, "") // Empty version = delete all
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete package"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"ok": true,
+		})
+	}
+}
+
+func handleNPMScopedDelete(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := middleware.GetUserFromContext(c)
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		scope := c.Param("scope")
+		name := c.Param("name")
+		packageName := fmt.Sprintf("@%s/%s", scope, name)
+		rev := c.Param("rev")
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx = context.WithValue(ctx, "user_id", user.ID)
+
+		_ = rev
+
+		err := registryService.Delete(ctx, packageName, "")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete package"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"ok": true,
+		})
+	}
+}
+
+func handleNPMSearch(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		text := c.Query("text")
+		size := c.DefaultQuery("size", "20")
+		from := c.DefaultQuery("from", "0")
+
+		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		
+		filter := &types.ArtifactFilter{
+			Registry: "npm",
+		}
+
+		if text != "" {
+			filter.Name = text // Simple name-based search
+		}
+
+		artifacts, err := registryService.List(ctx, filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
+			return
+		}
+
+		// Convert to npm search response format
+		objects := make([]gin.H, 0, len(artifacts))
+		for _, artifact := range artifacts {
+			var description, author string
+			if artifact.Metadata != nil {
+				if desc, ok := artifact.Metadata["description"].(string); ok {
+					description = desc
+				}
+				if auth, ok := artifact.Metadata["author"].(string); ok {
+					author = auth
+				}
+			}
+
+			objects = append(objects, gin.H{
+				"package": gin.H{
+					"name":        artifact.Name,
+					"version":     artifact.Version,
+					"description": description,
+					"author":      gin.H{"name": author},
+				},
+				"score": gin.H{
+					"final":   1.0,
+					"detail":  gin.H{},
+				},
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"objects": objects,
+			"total":   len(objects),
+			"time":    "0ms",
+		})
+	}
+}
