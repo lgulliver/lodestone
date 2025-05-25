@@ -33,7 +33,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 					c.Next()
 					return
 				}
-				
+
 				log.Warn().Err(err).Str("path", c.Request.URL.Path).Msg("JWT token validation failed")
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 				c.Abort()
