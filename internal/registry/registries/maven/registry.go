@@ -93,7 +93,7 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 	if artifact.Version == "" {
 		return fmt.Errorf("invalid Maven version format: version cannot be empty")
 	}
-	
+
 	// Maven version validation - allow alphanumeric, dots, hyphens, and common qualifiers
 	versionRegex := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$`)
 	if !versionRegex.MatchString(artifact.Version) {
