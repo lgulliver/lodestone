@@ -1,4 +1,3 @@
-// filepath: /home/liam/repos/lodestone/test/storage/storage_end_to_end_test.go
 // End-to-end integration test to verify enhanced storage implementation
 package storage_test
 
@@ -11,15 +10,16 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/types"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestStorageEndToEndIntegration(t *testing.T) {
@@ -60,51 +60,30 @@ func TestStorageEndToEndIntegration(t *testing.T) {
 }
 
 func setupTestServiceE2E(t *testing.T, testDir string) *registry.Service {
-	// Setup in-memory SQLite database with relaxed GORM configuration
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+	// Use file-based SQLite database to avoid table sharing issues with concurrent access
+	dbPath := filepath.Join(testDir, "test.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
+		Logger:                                   logger.Default.LogMode(logger.Silent), // Reduce noise in tests
 	})
 	if err != nil {
 		t.Fatal("Failed to connect to database:", err)
 	}
 
-	// Simple table creation for SQLite compatibility
-	err = db.Exec(`
-		CREATE TABLE users (
-			id TEXT PRIMARY KEY,
-			username TEXT NOT NULL UNIQUE,
-			email TEXT NOT NULL UNIQUE,
-			password TEXT NOT NULL,
-			is_active BOOLEAN DEFAULT true,
-			is_admin BOOLEAN DEFAULT false,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`).Error
+	// Configure SQLite for concurrent access
+	sqlDB, err := db.DB()
 	if err != nil {
-		t.Fatal("Failed to create users table:", err)
+		t.Fatal("Failed to get underlying database:", err)
 	}
 
-	err = db.Exec(`
-		CREATE TABLE artifacts (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			version TEXT NOT NULL,
-			registry TEXT NOT NULL,
-			storage_path TEXT NOT NULL,
-			content_type TEXT,
-			size INTEGER,
-			sha256 TEXT,
-			metadata TEXT,
-			downloads INTEGER DEFAULT 0,
-			published_by TEXT NOT NULL,
-			is_public BOOLEAN DEFAULT false,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`).Error
+	// Set connection pool settings for SQLite
+	sqlDB.SetMaxOpenConns(1) // SQLite works best with single connection
+	sqlDB.SetMaxIdleConns(1)
+
+	// Use GORM AutoMigrate instead of raw SQL
+	err = db.AutoMigrate(&types.User{}, &types.Artifact{})
 	if err != nil {
-		t.Fatal("Failed to create artifacts table:", err)
+		t.Fatal("Failed to migrate database:", err)
 	}
 
 	// Create test user
@@ -152,35 +131,26 @@ func testBasicWorkflowE2E(t *testing.T, service *registry.Service) {
 
 	// Upload artifact
 	artifact, err := service.Upload(ctx, "npm", packageName, version, strings.NewReader(content), userID)
-	if err != nil {
-		t.Fatal("Upload failed:", err)
-	}
+	assert.NoError(t, err, "Upload should not fail")
+	assert.NotNil(t, artifact, "Artifact should not be nil")
 
-	if artifact.Name != packageName || artifact.Version != version {
-		t.Fatal("Artifact metadata mismatch")
-	}
+	assert.Equal(t, packageName, artifact.Name, "Package name should match")
+	assert.Equal(t, version, artifact.Version, "Version should match")
+	assert.Equal(t, "npm", artifact.Registry, "Registry should match")
 
 	t.Logf("✅ Uploaded artifact: %s@%s (SHA256: %s)", artifact.Name, artifact.Version, artifact.SHA256)
 
 	// Download artifact
 	downloadedArtifact, reader, err := service.Download(ctx, "npm", packageName, version)
-	if err != nil {
-		t.Fatal("Download failed:", err)
-	}
+	assert.NoError(t, err, "Download should not fail")
+	assert.NotNil(t, reader, "Reader should not be nil")
 	defer reader.Close()
 
 	downloadedContent, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal("Failed to read downloaded content:", err)
-	}
+	assert.NoError(t, err, "Reading content should not fail")
 
-	if string(downloadedContent) != content {
-		t.Fatal("Downloaded content doesn't match uploaded content")
-	}
-
-	if downloadedArtifact.ID != artifact.ID {
-		t.Fatal("Downloaded artifact metadata doesn't match")
-	}
+	assert.Equal(t, content, string(downloadedContent), "Downloaded content should match uploaded content")
+	assert.Equal(t, artifact.ID, downloadedArtifact.ID, "Artifact IDs should match")
 
 	t.Logf("✅ Downloaded artifact: %s@%s (Size: %d bytes)", downloadedArtifact.Name, downloadedArtifact.Version, downloadedArtifact.Size)
 }
@@ -207,12 +177,13 @@ func testConcurrentOperationsE2E(t *testing.T, service *registry.Service) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	const numGoroutines = 10
-	const packagesPerGoroutine = 5
+	const numGoroutines = 5 // Reduced for SQLite compatibility
+	const packagesPerGoroutine = 3
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	uploaded := make(map[string]*types.Artifact)
+	errors := make([]error, 0)
 
 	// Concurrent uploads
 	for i := 0; i < numGoroutines; i++ {
@@ -227,7 +198,9 @@ func testConcurrentOperationsE2E(t *testing.T, service *registry.Service) {
 
 				artifact, err := service.Upload(ctx, "npm", packageName, version, strings.NewReader(content), userID)
 				if err != nil {
-					t.Logf("❌ Concurrent upload failed for %s: %v", packageName, err)
+					mu.Lock()
+					errors = append(errors, fmt.Errorf("concurrent upload failed for %s: %w", packageName, err))
+					mu.Unlock()
 					return
 				}
 
@@ -240,18 +213,19 @@ func testConcurrentOperationsE2E(t *testing.T, service *registry.Service) {
 
 	wg.Wait()
 
+	// Check for errors
+	assert.Empty(t, errors, "No concurrent upload errors should occur")
+
 	expectedCount := numGoroutines * packagesPerGoroutine
-	if len(uploaded) != expectedCount {
-		t.Fatalf("Expected %d uploads, got %d", expectedCount, len(uploaded))
-	}
+	assert.Equal(t, expectedCount, len(uploaded), "All uploads should succeed")
 
 	// Verify all uploads can be downloaded
 	for packageName := range uploaded {
 		_, reader, err := service.Download(ctx, "npm", packageName, "1.0.0")
-		if err != nil {
-			t.Fatalf("Failed to download %s: %v", packageName, err)
+		assert.NoError(t, err, "Download should not fail for %s", packageName)
+		if reader != nil {
+			reader.Close()
 		}
-		reader.Close()
 	}
 
 	t.Logf("✅ Concurrent operations completed: %d packages uploaded and verified", len(uploaded))
@@ -260,27 +234,20 @@ func testConcurrentOperationsE2E(t *testing.T, service *registry.Service) {
 func testContextCancellationE2E(t *testing.T, service *registry.Service) {
 	userID := uuid.New()
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	// Create a context that we'll cancel
+	ctx, cancel := context.WithCancel(context.Background())
 
-	// Try to upload with cancelled context
 	packageName := "cancelled-test"
 	version := "1.0.0"
 	content := "test content"
 
-	// Cancel the context immediately
+	// Cancel the context before the operation
 	cancel()
 
 	_, err := service.Upload(ctx, "npm", packageName, version, strings.NewReader(content), userID)
-	if err == nil {
-		t.Fatal("Expected upload to fail with cancelled context, but it succeeded")
-	}
+	assert.Error(t, err, "Upload should fail with cancelled context")
 
-	if !strings.Contains(err.Error(), "context") {
-		t.Logf("Warning: Error doesn't mention context cancellation: %v", err)
-	}
-
+	// The error should be related to context cancellation
 	t.Logf("✅ Context cancellation handled correctly: %v", err)
 }
 
@@ -351,21 +318,15 @@ func testDeletionAndCleanupE2E(t *testing.T, service *registry.Service) {
 	content := "content to be deleted"
 
 	artifact, err := service.Upload(ctx, "npm", packageName, version, strings.NewReader(content), userID)
-	if err != nil {
-		t.Fatal("Upload failed:", err)
-	}
+	assert.NoError(t, err, "Upload should not fail")
 
 	// Delete artifact
 	err = service.Delete(ctx, "npm", packageName, version, userID)
-	if err != nil {
-		t.Fatal("Delete failed:", err)
-	}
+	assert.NoError(t, err, "Delete should not fail")
 
 	// Verify download fails
 	_, _, err = service.Download(ctx, "npm", packageName, version)
-	if err == nil {
-		t.Fatal("Download should have failed after deletion")
-	}
+	assert.Error(t, err, "Download should fail after deletion")
 
 	t.Logf("✅ Deletion and cleanup verified: artifact %s@%s removed", artifact.Name, artifact.Version)
 }

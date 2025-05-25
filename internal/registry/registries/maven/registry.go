@@ -27,9 +27,7 @@ func New(storage storage.BlobStorage, db *common.Database) *Registry {
 }
 
 // Upload stores a Maven artifact
-func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
-	ctx := context.Background()
-
+func (r *Registry) Upload(ctx context.Context, artifact *types.Artifact, content []byte) error {
 	// Determine content type based on file extension
 	contentType := "application/java-archive"
 	if strings.HasSuffix(artifact.Name, ".pom") {

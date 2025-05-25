@@ -40,13 +40,24 @@ func TestSimpleE2EWorkflow(t *testing.T) {
 }
 
 func setupSimpleTestEnvironment(t *testing.T, testDir string) *registry.Service {
-	// Setup in-memory SQLite database
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+	// Use file-based SQLite database to avoid table sharing issues with concurrent access
+	dbPath := filepath.Join(testDir, "test.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		t.Fatal("Failed to connect to database:", err)
 	}
+
+	// Configure SQLite for concurrent access
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal("Failed to get underlying database:", err)
+	}
+
+	// Set connection pool settings for SQLite
+	sqlDB.SetMaxOpenConns(1) // SQLite works best with single connection
+	sqlDB.SetMaxIdleConns(1)
 
 	// Create basic tables
 	err = db.Exec(`

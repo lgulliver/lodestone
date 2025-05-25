@@ -26,9 +26,7 @@ func New(storage storage.BlobStorage, db *common.Database) *Registry {
 }
 
 // Upload stores a Helm chart
-func (r *Registry) Upload(artifact *types.Artifact, content []byte) error {
-	ctx := context.Background()
-
+func (r *Registry) Upload(ctx context.Context, artifact *types.Artifact, content []byte) error {
 	// Store the content
 	reader := bytes.NewReader(content)
 	if err := r.storage.Store(ctx, artifact.StoragePath, reader, "application/gzip"); err != nil {

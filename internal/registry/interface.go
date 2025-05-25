@@ -1,11 +1,15 @@
 package registry
 
-import "github.com/lgulliver/lodestone/pkg/types"
+import (
+	"context"
+
+	"github.com/lgulliver/lodestone/pkg/types"
+)
 
 // Handler defines the interface that all registry implementations must implement
 type Handler interface {
 	// Upload stores an artifact in the registry
-	Upload(artifact *types.Artifact, content []byte) error
+	Upload(ctx context.Context, artifact *types.Artifact, content []byte) error
 
 	// Download retrieves an artifact from the registry
 	// Note: This method is deprecated - use service.Download instead

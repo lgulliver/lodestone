@@ -1,10 +1,44 @@
 package types
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// JSONMap is a custom type that can handle JSON serialization for both PostgreSQL and SQLite
+type JSONMap map[string]interface{}
+
+// Value implements the driver.Valuer interface for GORM
+func (j JSONMap) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return json.Marshal(j)
+}
+
+// Scan implements the sql.Scanner interface for GORM
+func (j *JSONMap) Scan(value interface{}) error {
+	if value == nil {
+		*j = nil
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return fmt.Errorf("cannot scan %T into JSONMap", value)
+	}
+
+	return json.Unmarshal(bytes, j)
+}
 
 // User represents a user in the system
 type User struct {
@@ -20,67 +54,67 @@ type User struct {
 
 // APIKey represents an API key for programmatic access
 type APIKey struct {
-	ID          uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UserID      uuid.UUID `json:"user_id" gorm:"type:uuid;not null"`
-	Name        string    `json:"name" gorm:"not null"`
-	KeyHash     string    `json:"-" gorm:"not null"`
-	Permissions []string  `json:"permissions" gorm:"type:jsonb"`
+	ID          uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	UserID      uuid.UUID  `json:"user_id" gorm:"type:uuid;not null"`
+	Name        string     `json:"name" gorm:"not null"`
+	KeyHash     string     `json:"-" gorm:"not null"`
+	Permissions []string   `json:"permissions" gorm:"type:jsonb"`
 	ExpiresAt   *time.Time `json:"expires_at"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
-	IsActive    bool      `json:"is_active" gorm:"default:true"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	User        User      `json:"user" gorm:"foreignKey:UserID"`
+	IsActive    bool       `json:"is_active" gorm:"default:true"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	User        User       `json:"user" gorm:"foreignKey:UserID"`
 }
 
 // Artifact represents a stored artifact
 type Artifact struct {
-	ID          uuid.UUID          `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	Name        string             `json:"name" gorm:"not null"`
-	Version     string             `json:"version" gorm:"not null"`
-	Registry    string             `json:"registry" gorm:"not null"` // nuget, npm, maven, etc.
-	ContentType string             `json:"content_type"`
-	Size        int64              `json:"size"`
-	SHA256      string             `json:"sha256" gorm:"index"`
-	StoragePath string             `json:"-" gorm:"not null"`
-	Metadata    map[string]interface{} `json:"metadata" gorm:"type:jsonb"`
-	Downloads   int64              `json:"downloads" gorm:"default:0"`
-	PublishedBy uuid.UUID          `json:"published_by" gorm:"type:uuid"`
-	IsPublic    bool               `json:"is_public" gorm:"default:false"`
-	CreatedAt   time.Time          `json:"created_at"`
-	UpdatedAt   time.Time          `json:"updated_at"`
-	Publisher   User               `json:"publisher" gorm:"foreignKey:PublishedBy"`
+	ID          uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	Name        string    `json:"name" gorm:"not null"`
+	Version     string    `json:"version" gorm:"not null"`
+	Registry    string    `json:"registry" gorm:"not null"` // nuget, npm, maven, etc.
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+	SHA256      string    `json:"sha256" gorm:"index"`
+	StoragePath string    `json:"-" gorm:"not null"`
+	Metadata    JSONMap   `json:"metadata" gorm:"type:text"`
+	Downloads   int64     `json:"downloads" gorm:"default:0"`
+	PublishedBy uuid.UUID `json:"published_by" gorm:"type:uuid"`
+	IsPublic    bool      `json:"is_public" gorm:"default:false"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Publisher   User      `json:"publisher" gorm:"foreignKey:PublishedBy"`
 }
 
 // Permission represents a permission in the system
 type Permission struct {
-	ID          uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UserID      uuid.UUID `json:"user_id" gorm:"type:uuid;not null"`
-	Resource    string    `json:"resource" gorm:"not null"` // registry:nuget, package:lodestone/myapp
-	Action      string    `json:"action" gorm:"not null"`   // read, write, delete
-	GrantedBy   uuid.UUID `json:"granted_by" gorm:"type:uuid"`
-	CreatedAt   time.Time `json:"created_at"`
-	User        User      `json:"user" gorm:"foreignKey:UserID"`
-	GrantedByUser User    `json:"granted_by_user" gorm:"foreignKey:GrantedBy"`
+	ID            uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	UserID        uuid.UUID `json:"user_id" gorm:"type:uuid;not null"`
+	Resource      string    `json:"resource" gorm:"not null"` // registry:nuget, package:lodestone/myapp
+	Action        string    `json:"action" gorm:"not null"`   // read, write, delete
+	GrantedBy     uuid.UUID `json:"granted_by" gorm:"type:uuid"`
+	CreatedAt     time.Time `json:"created_at"`
+	User          User      `json:"user" gorm:"foreignKey:UserID"`
+	GrantedByUser User      `json:"granted_by_user" gorm:"foreignKey:GrantedBy"`
 }
 
 // Registry interface for different artifact types
 type Registry interface {
 	// Upload stores an artifact
 	Upload(artifact *Artifact, content []byte) error
-	
+
 	// Download retrieves an artifact
 	Download(name, version string) (*Artifact, []byte, error)
-	
+
 	// List returns artifacts matching the filter
 	List(filter *ArtifactFilter) ([]*Artifact, error)
-	
+
 	// Delete removes an artifact
 	Delete(name, version string) error
-	
+
 	// Validate checks if the artifact is valid for this registry
 	Validate(artifact *Artifact, content []byte) error
-	
+
 	// GetMetadata extracts metadata from the artifact
 	GetMetadata(content []byte) (map[string]interface{}, error)
 }
@@ -98,15 +132,15 @@ type ArtifactFilter struct {
 type RegistryType string
 
 const (
-	RegistryNuGet     RegistryType = "nuget"
-	RegistryOCI       RegistryType = "oci"
-	RegistryOPA       RegistryType = "opa"
-	RegistryMaven     RegistryType = "maven"
-	RegistryNPM       RegistryType = "npm"
-	RegistryCargo     RegistryType = "cargo"
-	RegistryGo        RegistryType = "go"
-	RegistryHelm      RegistryType = "helm"
-	RegistryRubyGems  RegistryType = "rubygems"
+	RegistryNuGet    RegistryType = "nuget"
+	RegistryOCI      RegistryType = "oci"
+	RegistryOPA      RegistryType = "opa"
+	RegistryMaven    RegistryType = "maven"
+	RegistryNPM      RegistryType = "npm"
+	RegistryCargo    RegistryType = "cargo"
+	RegistryGo       RegistryType = "go"
+	RegistryHelm     RegistryType = "helm"
+	RegistryRubyGems RegistryType = "rubygems"
 )
 
 // AuthToken represents a JWT token

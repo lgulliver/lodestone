@@ -122,7 +122,7 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	artifact.StoragePath = handler.GenerateStoragePath(name, version)
 
 	// Store the artifact
-	if err := handler.Upload(artifact, contentBytes); err != nil {
+	if err := handler.Upload(ctx, artifact, contentBytes); err != nil {
 		return nil, fmt.Errorf("failed to upload artifact: %w", err)
 	}
 
@@ -160,7 +160,7 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 	}
 
 	// Increment download counter
-	s.DB.Model(&artifact).Update("downloads", gorm.Expr("downloads + ?", 1))
+	s.DB.Model(&artifact).Where("id = ?", artifact.ID).Update("downloads", gorm.Expr("downloads + ?", 1))
 
 	return &artifact, content, nil
 }
@@ -171,7 +171,7 @@ func (s *Service) List(ctx context.Context, filter *types.ArtifactFilter) ([]*ty
 
 	// Apply filters
 	if filter.Name != "" {
-		query = query.Where("name ILIKE ?", "%"+filter.Name+"%")
+		query = query.Where("name LIKE ?", "%"+filter.Name+"%")
 	}
 	if filter.Registry != "" {
 		query = query.Where("registry = ?", filter.Registry)
