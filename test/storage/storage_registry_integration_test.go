@@ -1,4 +1,4 @@
-package storage
+package storage_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/registry"
+	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/config"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -30,11 +31,11 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 
 	// Setup test storage
 	tempDir := t.TempDir()
-	storage, err := NewLocalStorage(tempDir)
+	storageInstance, err := storage.NewLocalStorage(tempDir)
 	require.NoError(t, err)
 
 	// Create registry service
-	registryService := registry.NewService(commonDB, storage)
+	registryService := registry.NewService(commonDB, storageInstance)
 
 	// Test data
 	ctx := context.Background()
@@ -71,12 +72,12 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		assert.NotEmpty(t, artifact.StoragePath)
 
 		// Verify file exists in storage
-		exists, err := storage.Exists(ctx, artifact.StoragePath)
+		exists, err := storageInstance.Exists(ctx, artifact.StoragePath)
 		require.NoError(t, err)
 		assert.True(t, exists)
 
 		// Verify file size matches
-		size, err := storage.GetSize(ctx, artifact.StoragePath)
+		size, err := storageInstance.GetSize(ctx, artifact.StoragePath)
 		require.NoError(t, err)
 		assert.Equal(t, artifact.Size, size)
 
@@ -122,7 +123,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify file exists
-		exists, err := storage.Exists(ctx, artifact.StoragePath)
+		exists, err := storageInstance.Exists(ctx, artifact.StoragePath)
 		require.NoError(t, err)
 		assert.True(t, exists)
 
@@ -131,7 +132,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify file no longer exists
-		exists, err = storage.Exists(ctx, artifact.StoragePath)
+		exists, err = storageInstance.Exists(ctx, artifact.StoragePath)
 		require.NoError(t, err)
 		assert.False(t, exists)
 
@@ -167,7 +168,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		}
 
 		// List files with npm prefix
-		files, err := storage.List(ctx, "npm")
+		files, err := storageInstance.List(ctx, "npm")
 		require.NoError(t, err)
 
 		// Verify all uploaded files are in the list
@@ -195,12 +196,12 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 		LocalPath: tempDir,
 	}
 
-	factory := NewStorageFactory(storageConfig)
-	storage, err := factory.CreateStorage()
+	factory := storage.NewStorageFactory(storageConfig)
+	storageInstance, err := factory.CreateStorage()
 	require.NoError(t, err)
 
 	// Create registry service with factory-created storage
-	registryService := registry.NewService(commonDB, storage)
+	registryService := registry.NewService(commonDB, storageInstance)
 
 	// Test basic operation
 	ctx := context.Background()
@@ -218,7 +219,7 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 	assert.Equal(t, "factory-test-package", artifact.Name)
 
 	// Verify file exists
-	exists, err := storage.Exists(ctx, artifact.StoragePath)
+	exists, err := storageInstance.Exists(ctx, artifact.StoragePath)
 	require.NoError(t, err)
 	assert.True(t, exists)
 }
