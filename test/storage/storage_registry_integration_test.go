@@ -37,6 +37,18 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 	// Create registry service
 	registryService := registry.NewService(commonDB, storageInstance)
 
+	// Create test user
+	user := &types.User{
+		ID:       uuid.New(),
+		Username: "testuser",
+		Email:    "test@example.com",
+		Password: "hashedpassword",
+		IsActive: true,
+		IsAdmin:  false,
+	}
+	err = db.Create(user).Error
+	require.NoError(t, err)
+
 	// Test data
 	ctx := context.Background()
 	registryType := "npm"
@@ -48,7 +60,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		"description": "A test npm package",
 		"main": "index.js"
 	}`
-	userID := uuid.New()
+	userID := user.ID
 
 	t.Run("upload and download workflow", func(t *testing.T) {
 		// Upload artifact
