@@ -186,15 +186,15 @@ func (s *Service) IndexArtifact(ctx context.Context, artifact *types.Artifact) e
 
 	// Store in a search index table (we'll create this)
 	index := &ArtifactIndex{
-		ArtifactID:      artifact.ID,
-		Name:            artifact.Name,
-		Registry:        artifact.Registry,
-		SearchableText:  searchableText,
-		Tags:            s.extractTags(artifact.Metadata),
-		Description:     s.extractDescription(artifact.Metadata),
-		Author:          s.extractAuthor(artifact.Metadata),
-		Keywords:        s.extractKeywords(artifact.Metadata),
-		UpdatedAt:       time.Now(),
+		ArtifactID:     artifact.ID,
+		Name:           artifact.Name,
+		Registry:       artifact.Registry,
+		SearchableText: searchableText,
+		Tags:           s.extractTags(artifact.Metadata),
+		Description:    s.extractDescription(artifact.Metadata),
+		Author:         s.extractAuthor(artifact.Metadata),
+		Keywords:       s.extractKeywords(artifact.Metadata),
+		UpdatedAt:      time.Now(),
 	}
 
 	// Upsert the index entry
@@ -230,7 +230,7 @@ func (s *Service) GetDownloadStats(ctx context.Context, artifactID uuid.UUID) (*
 
 	// For now, we'll simulate this - in production you'd track individual downloads
 	stats := &DownloadStats{
-		Total:     artifact.Downloads,
+		Total:      artifact.Downloads,
 		Last30Days: artifact.Downloads / 10, // Simulate recent activity
 		Last7Days:  artifact.Downloads / 30,
 		Today:      artifact.Downloads / 100,
@@ -393,7 +393,7 @@ func (s *Service) extractDependencies(metadata map[string]interface{}) []Depende
 func (s *Service) extractSecurityInfo(metadata map[string]interface{}) *SecurityInfo {
 	if security, ok := metadata["security"].(map[string]interface{}); ok {
 		info := &SecurityInfo{}
-		
+
 		if vulnerabilities, ok := security["vulnerabilities"].([]interface{}); ok {
 			for _, vuln := range vulnerabilities {
 				if vulnMap, ok := vuln.(map[string]interface{}); ok {
@@ -419,7 +419,7 @@ func (s *Service) extractSecurityInfo(metadata map[string]interface{}) *Security
 func (s *Service) extractQualityMetrics(metadata map[string]interface{}) *QualityMetrics {
 	if quality, ok := metadata["quality"].(map[string]interface{}); ok {
 		metrics := &QualityMetrics{}
-		
+
 		if coverage, ok := quality["test_coverage"].(float64); ok {
 			metrics.TestCoverage = &coverage
 		}

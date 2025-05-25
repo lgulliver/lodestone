@@ -93,7 +93,7 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 		if parseLength > 100 {
 			parseLength = 100
 		}
-		
+
 		if err := json.Unmarshal(content[:parseLength], &manifest); err == nil {
 			// If we can extract a manifest, validate name and version match
 			if manifest.Name != "" && manifest.Name != artifact.Name {
@@ -130,7 +130,7 @@ func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 		if parseLength > 100 {
 			parseLength = 100
 		}
-		
+
 		// For testing purposes, try to parse the entire content first
 		if err := json.Unmarshal(content, &manifest); err == nil {
 			if manifest.Description != "" {

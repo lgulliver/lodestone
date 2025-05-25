@@ -17,24 +17,24 @@ import (
 
 // Test-specific structs for SQLite compatibility
 type TestArtifactIndex struct {
-	ID             uint      `gorm:"primaryKey"`
-	ArtifactID     string    `gorm:"uniqueIndex;not null"`
-	Name           string    `gorm:"index;not null"`
-	Registry       string    `gorm:"index;not null"`
-	SearchableText string    `gorm:"type:text"`
-	Tags           string    `gorm:"type:text"` // JSON as string for SQLite
-	Description    string    `gorm:"type:text"`
-	Author         string    `gorm:"index"`
-	Keywords       string    `gorm:"type:text"` // JSON as string for SQLite
+	ID             uint   `gorm:"primaryKey"`
+	ArtifactID     string `gorm:"uniqueIndex;not null"`
+	Name           string `gorm:"index;not null"`
+	Registry       string `gorm:"index;not null"`
+	SearchableText string `gorm:"type:text"`
+	Tags           string `gorm:"type:text"` // JSON as string for SQLite
+	Description    string `gorm:"type:text"`
+	Author         string `gorm:"index"`
+	Keywords       string `gorm:"type:text"` // JSON as string for SQLite
 	UpdatedAt      time.Time
 	CreatedAt      time.Time
 }
 
 type TestDownloadEvent struct {
-	ID         uint      `gorm:"primaryKey"`
-	ArtifactID string    `gorm:"index;not null"`
-	UserID     *string   `gorm:"index"`
-	IPAddress  string    `gorm:"index"`
+	ID         uint    `gorm:"primaryKey"`
+	ArtifactID string  `gorm:"index;not null"`
+	UserID     *string `gorm:"index"`
+	IPAddress  string  `gorm:"index"`
 	UserAgent  string
 	Registry   string    `gorm:"index"`
 	Name       string    `gorm:"index"`
