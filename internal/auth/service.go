@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/internal/common"
+	"github.com/lgulliver/lodestone/pkg/auth"
 	"github.com/lgulliver/lodestone/pkg/config"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/lgulliver/lodestone/pkg/utils"
@@ -164,13 +165,13 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*types
 // CreateAPIKey creates a new API key for a user
 func (s *Service) CreateAPIKey(ctx context.Context, userID uuid.UUID, name string, permissions []string) (*types.APIKey, string, error) {
 	// Generate API key
-	keyValue, err := utils.GenerateAPIKey()
+	keyValue, err := auth.GenerateAPIKey()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate API key: %w", err)
 	}
 
 	// Hash the key for storage
-	keyHash := utils.HashAPIKey(keyValue)
+	keyHash := auth.HashAPIKey(keyValue)
 
 	// Create API key record
 	apiKey := &types.APIKey{
@@ -195,11 +196,20 @@ func (s *Service) CreateAPIKey(ctx context.Context, userID uuid.UUID, name strin
 
 // ValidateAPIKey validates an API key and returns the associated user
 func (s *Service) ValidateAPIKey(ctx context.Context, keyValue string) (*types.User, *types.APIKey, error) {
-	keyHash := utils.HashAPIKey(keyValue)
+	// Log the API key format being validated for monitoring
+	keyFormat := auth.GetAPIKeyFormat(keyValue)
+	log.Debug().
+		Str("key_format", keyFormat).
+		Msg("Validating API key")
+
+	keyHash := auth.HashAPIKey(keyValue)
 
 	var apiKey types.APIKey
 	if err := s.db.Preload("User").Where("key_hash = ? AND is_active = ?", keyHash, true).First(&apiKey).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			log.Warn().
+				Str("key_format", keyFormat).
+				Msg("API key validation failed: key not found")
 			return nil, nil, fmt.Errorf("invalid API key")
 		}
 		return nil, nil, fmt.Errorf("failed to validate API key: %w", err)
@@ -214,6 +224,13 @@ func (s *Service) ValidateAPIKey(ctx context.Context, keyValue string) (*types.U
 	if !apiKey.User.IsActive {
 		return nil, nil, fmt.Errorf("user account is disabled")
 	}
+
+	log.Info().
+		Str("user_id", apiKey.UserID.String()).
+		Str("username", apiKey.User.Username).
+		Str("key_format", keyFormat).
+		Str("key_name", apiKey.Name).
+		Msg("API key validation successful")
 
 	// Update last used timestamp
 	now := time.Now()

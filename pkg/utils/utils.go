@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -28,21 +27,6 @@ func HashPassword(password string, cost int) (string, error) {
 func CheckPassword(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
-}
-
-// GenerateAPIKey generates a random API key
-func GenerateAPIKey() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
-}
-
-// HashAPIKey hashes an API key for storage
-func HashAPIKey(key string) string {
-	hash := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(hash[:])
 }
 
 // GenerateJWT generates a JWT token
@@ -75,12 +59,12 @@ func ValidateJWT(tokenString, secret string) (uuid.UUID, error) {
 		if !ok {
 			return uuid.Nil, fmt.Errorf("invalid user_id claim")
 		}
-		
+
 		userID, err := uuid.Parse(userIDStr)
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("invalid user_id format")
 		}
-		
+
 		return userID, nil
 	}
 
@@ -117,7 +101,7 @@ func ValidateVersion(version string) bool {
 	if version == "" {
 		return false
 	}
-	
+
 	// Check for common version patterns
 	return len(version) > 0 && len(version) <= 50
 }
@@ -125,10 +109,10 @@ func ValidateVersion(version string) bool {
 // IsValidRegistryType checks if a registry type is supported
 func IsValidRegistryType(registryType string) bool {
 	validTypes := []string{
-		"nuget", "oci", "opa", "maven", "npm", 
+		"nuget", "oci", "opa", "maven", "npm",
 		"cargo", "go", "helm", "rubygems",
 	}
-	
+
 	for _, valid := range validTypes {
 		if registryType == valid {
 			return true
@@ -143,13 +127,13 @@ func FormatBytes(bytes int64) string {
 	if bytes < unit {
 		return fmt.Sprintf("%d B", bytes)
 	}
-	
+
 	div, exp := int64(unit), 0
 	for n := bytes / unit; n >= unit; n /= unit {
 		div *= unit
 		exp++
 	}
-	
+
 	suffixes := []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
 	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), suffixes[exp])
 }
