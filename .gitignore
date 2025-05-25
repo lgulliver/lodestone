@@ -75,3 +75,6 @@ coverage.html
 # Kubernetes secrets
 secrets.yaml
 *.secret.yaml
+
+# test packages
+test-package/

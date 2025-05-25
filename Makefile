@@ -174,3 +174,81 @@ info: ## Show project information
 	@echo "Go Version: $(GO_VERSION)"
 	@echo "Services: $(SERVICES)"
 	@echo "Binary Directory: $(BINARY_DIR)"
+
+# Docker Compose Management
+.PHONY: docker-build docker-up docker-down docker-logs docker-clean docker-dev docker-prod
+
+docker-build: ## Build Docker images
+	@echo "Building Docker images..."
+	@docker-compose build
+
+docker-up: ## Start all services with Docker Compose
+	@echo "Starting Lodestone services..."
+	@docker-compose up -d
+
+docker-down: ## Stop all services
+	@echo "Stopping Lodestone services..."
+	@docker-compose down
+
+docker-logs: ## View logs from all services
+	@docker-compose logs -f
+
+docker-clean: ## Clean up Docker resources
+	@echo "Cleaning up Docker resources..."
+	@docker-compose down -v --remove-orphans
+	@docker system prune -f
+
+docker-dev: ## Start development environment
+	@echo "Starting development environment..."
+	@docker-compose -f deployments/docker-compose.dev.yml up -d
+
+docker-prod: ## Start production environment with Nginx
+	@echo "Starting production environment..."
+	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml --profile production up -d
+
+docker-prod-ssl: ## Start production with SSL support
+	@echo "Starting production with SSL..."
+	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml --profile production --profile ssl up -d
+
+# SSL Certificate Management
+ssl-init: ## Initialize SSL certificates with Let's Encrypt
+	@echo "Initializing SSL certificates..."
+	@mkdir -p ssl/certs ssl/private
+	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml run --rm certbot \
+		certonly --webroot --webroot-path=/var/www/certbot \
+		--email ${CERTBOT_EMAIL} --agree-tos --no-eff-email \
+		-d ${DOMAIN_NAME}
+
+ssl-renew: ## Renew SSL certificates
+	@echo "Renewing SSL certificates..."
+	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml exec certbot \
+		certbot renew --webroot --webroot-path=/var/www/certbot
+
+# Backup and Restore
+backup: ## Create backup of data volumes
+	@echo "Creating backup..."
+	@mkdir -p backups/$(shell date +%Y%m%d_%H%M%S)
+	@docker run --rm -v lodestone_postgres_data:/data -v $(PWD)/backups/$(shell date +%Y%m%d_%H%M%S):/backup alpine tar czf /backup/postgres.tar.gz /data
+	@docker run --rm -v lodestone_artifacts_data:/data -v $(PWD)/backups/$(shell date +%Y%m%d_%H%M%S):/backup alpine tar czf /backup/artifacts.tar.gz /data
+	@echo "Backup completed in backups/$(shell date +%Y%m%d_%H%M%S)"
+
+# Deployment helpers
+deploy-check: ## Check if deployment is ready
+	@echo "Checking deployment health..."
+	@./scripts/health-check.sh
+
+deploy-status: ## Show status of all services
+	@docker-compose ps
+
+# Environment setup
+env-setup: ## Copy environment template
+	@echo "Setting up environment file..."
+	@cp .env.example .env
+	@echo "Please edit .env file with your configuration"
+
+# Security
+security-scan: ## Run security scan on Docker images
+	@echo "Running security scan..."
+	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(PWD):/path \
+		aquasec/trivy image lodestone_api-gateway:latest
