@@ -2,6 +2,7 @@ package npm
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/lgulliver/lodestone/internal/common"
@@ -18,14 +19,14 @@ type MockBlobStorage struct {
 	mock.Mock
 }
 
-func (m *MockBlobStorage) Store(ctx context.Context, path string, content interface{}, contentType string) error {
+func (m *MockBlobStorage) Store(ctx context.Context, path string, content io.Reader, contentType string) error {
 	args := m.Called(ctx, path, content, contentType)
 	return args.Error(0)
 }
 
-func (m *MockBlobStorage) Retrieve(ctx context.Context, path string) (interface{}, error) {
+func (m *MockBlobStorage) Retrieve(ctx context.Context, path string) (io.ReadCloser, error) {
 	args := m.Called(ctx, path)
-	return args.Get(0), args.Error(1)
+	return args.Get(0).(io.ReadCloser), args.Error(1)
 }
 
 func (m *MockBlobStorage) Delete(ctx context.Context, path string) error {

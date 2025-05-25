@@ -72,15 +72,15 @@ func (s *Service) SearchArtifacts(ctx context.Context, query *SearchQuery) (*Sea
 	// Apply sorting
 	switch query.SortBy {
 	case "name":
-		db = db.Order("name " + query.SortOrder)
+		db = db.Order("artifacts.name " + query.SortOrder)
 	case "created_at":
-		db = db.Order("created_at " + query.SortOrder)
+		db = db.Order("artifacts.created_at " + query.SortOrder)
 	case "downloads":
-		db = db.Order("downloads " + query.SortOrder)
+		db = db.Order("artifacts.downloads " + query.SortOrder)
 	case "updated_at":
-		db = db.Order("updated_at " + query.SortOrder)
+		db = db.Order("artifacts.updated_at " + query.SortOrder)
 	default:
-		db = db.Order("created_at DESC")
+		db = db.Order("artifacts.created_at DESC")
 	}
 
 	// Apply pagination

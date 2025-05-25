@@ -21,8 +21,8 @@ type MockBlobStorage struct {
 	mock.Mock
 }
 
-func (m *MockBlobStorage) Store(ctx context.Context, path string, content io.Reader) error {
-	args := m.Called(ctx, path, content)
+func (m *MockBlobStorage) Store(ctx context.Context, path string, content io.Reader, contentType string) error {
+	args := m.Called(ctx, path, content, contentType)
 	return args.Error(0)
 }
 
@@ -61,18 +61,18 @@ func (m *MockHandler) Upload(ctx context.Context, artifact *types.Artifact, cont
 	return args.Error(0)
 }
 
-func (m *MockHandler) Download(ctx context.Context, name, version string) (*types.Artifact, io.ReadCloser, error) {
-	args := m.Called(ctx, name, version)
-	return args.Get(0).(*types.Artifact), args.Get(1).(io.ReadCloser), args.Error(2)
+func (m *MockHandler) Download(name, version string) (*types.Artifact, []byte, error) {
+	args := m.Called(name, version)
+	return args.Get(0).(*types.Artifact), args.Get(1).([]byte), args.Error(2)
 }
 
-func (m *MockHandler) List(ctx context.Context, filter *types.ArtifactFilter) ([]*types.Artifact, error) {
-	args := m.Called(ctx, filter)
+func (m *MockHandler) List(filter *types.ArtifactFilter) ([]*types.Artifact, error) {
+	args := m.Called(filter)
 	return args.Get(0).([]*types.Artifact), args.Error(1)
 }
 
-func (m *MockHandler) Delete(ctx context.Context, name, version string) error {
-	args := m.Called(ctx, name, version)
+func (m *MockHandler) Delete(name, version string) error {
+	args := m.Called(name, version)
 	return args.Error(0)
 }
 
@@ -143,7 +143,7 @@ func TestNewService(t *testing.T) {
 }
 
 func TestUpload_Success(t *testing.T) {
-	service, db, mockStorage := setupTestService(t)
+	service, db, _ := setupTestService(t)
 	user := createTestUser(t, db)
 	ctx := context.Background()
 
