@@ -42,7 +42,7 @@ func (j *JSONMap) Scan(value interface{}) error {
 
 // User represents a user in the system
 type User struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID        uuid.UUID `json:"id" gorm:"primaryKey"`
 	Username  string    `json:"username" gorm:"uniqueIndex;not null"`
 	Email     string    `json:"email" gorm:"uniqueIndex;not null"`
 	Password  string    `json:"-" gorm:"not null"`
@@ -54,11 +54,11 @@ type User struct {
 
 // APIKey represents an API key for programmatic access
 type APIKey struct {
-	ID          uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UserID      uuid.UUID  `json:"user_id" gorm:"type:uuid;not null"`
+	ID          uuid.UUID  `json:"id" gorm:"primaryKey"`
+	UserID      uuid.UUID  `json:"user_id" gorm:"not null"`
 	Name        string     `json:"name" gorm:"not null"`
 	KeyHash     string     `json:"-" gorm:"not null"`
-	Permissions []string   `json:"permissions" gorm:"type:jsonb"`
+	Permissions []string   `json:"permissions" gorm:"serializer:json"`
 	ExpiresAt   *time.Time `json:"expires_at"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
 	IsActive    bool       `json:"is_active" gorm:"default:true"`
@@ -69,7 +69,7 @@ type APIKey struct {
 
 // Artifact represents a stored artifact
 type Artifact struct {
-	ID          uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID          uuid.UUID `json:"id" gorm:"primaryKey"`
 	Name        string    `json:"name" gorm:"not null"`
 	Version     string    `json:"version" gorm:"not null"`
 	Registry    string    `json:"registry" gorm:"not null"` // nuget, npm, maven, etc.
@@ -77,9 +77,9 @@ type Artifact struct {
 	Size        int64     `json:"size"`
 	SHA256      string    `json:"sha256" gorm:"index"`
 	StoragePath string    `json:"-" gorm:"not null"`
-	Metadata    JSONMap   `json:"metadata" gorm:"type:text"`
+	Metadata    JSONMap   `json:"metadata" gorm:"serializer:json"`
 	Downloads   int64     `json:"downloads" gorm:"default:0"`
-	PublishedBy uuid.UUID `json:"published_by" gorm:"type:uuid"`
+	PublishedBy uuid.UUID `json:"published_by"`
 	IsPublic    bool      `json:"is_public" gorm:"default:false"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -88,11 +88,11 @@ type Artifact struct {
 
 // Permission represents a permission in the system
 type Permission struct {
-	ID            uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UserID        uuid.UUID `json:"user_id" gorm:"type:uuid;not null"`
+	ID            uuid.UUID `json:"id" gorm:"primaryKey"`
+	UserID        uuid.UUID `json:"user_id" gorm:"not null"`
 	Resource      string    `json:"resource" gorm:"not null"` // registry:nuget, package:lodestone/myapp
 	Action        string    `json:"action" gorm:"not null"`   // read, write, delete
-	GrantedBy     uuid.UUID `json:"granted_by" gorm:"type:uuid"`
+	GrantedBy     uuid.UUID `json:"granted_by"`
 	CreatedAt     time.Time `json:"created_at"`
 	User          User      `json:"user" gorm:"foreignKey:UserID"`
 	GrantedByUser User      `json:"granted_by_user" gorm:"foreignKey:GrantedBy"`

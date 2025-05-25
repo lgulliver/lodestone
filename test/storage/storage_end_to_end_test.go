@@ -33,7 +33,7 @@ func TestStorageEndToEndIntegration(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	// Setup database and service
-	service := setupTestServiceE2E(t, testDir)
+	service, testUserID := setupTestServiceE2E(t, testDir)
 
 	t.Log("1. Testing basic upload/download workflow...")
 	testBasicWorkflowE2E(t, service)
@@ -51,7 +51,7 @@ func TestStorageEndToEndIntegration(t *testing.T) {
 	testMultipleRegistriesE2E(t, service)
 
 	t.Log("6. Testing deletion and cleanup...")
-	testDeletionAndCleanupE2E(t, service)
+	testDeletionAndCleanupE2E(t, service, testUserID)
 
 	t.Log("7. Testing enhanced storage features...")
 	testEnhancedStorageFeaturesE2E(t, service)
@@ -59,7 +59,7 @@ func TestStorageEndToEndIntegration(t *testing.T) {
 	t.Log("✅ All end-to-end tests passed!")
 }
 
-func setupTestServiceE2E(t *testing.T, testDir string) *registry.Service {
+func setupTestServiceE2E(t *testing.T, testDir string) (*registry.Service, uuid.UUID) {
 	// Use file-based SQLite database to avoid table sharing issues with concurrent access
 	dbPath := filepath.Join(testDir, "test.db")
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
@@ -117,7 +117,7 @@ func setupTestServiceE2E(t *testing.T, testDir string) *registry.Service {
 	// Create registry service
 	service := registry.NewService(commonDB, storageBackend)
 
-	return service
+	return service, testUser.ID
 }
 
 func testBasicWorkflowE2E(t *testing.T, service *registry.Service) {
@@ -308,20 +308,19 @@ func testMultipleRegistriesE2E(t *testing.T, service *registry.Service) {
 	}
 }
 
-func testDeletionAndCleanupE2E(t *testing.T, service *registry.Service) {
+func testDeletionAndCleanupE2E(t *testing.T, service *registry.Service, testUserID uuid.UUID) {
 	ctx := context.Background()
-	userID := uuid.New()
 
 	// Upload artifact for deletion
 	packageName := "delete-test"
 	version := "1.0.0"
 	content := "content to be deleted"
 
-	artifact, err := service.Upload(ctx, "npm", packageName, version, strings.NewReader(content), userID)
+	artifact, err := service.Upload(ctx, "npm", packageName, version, strings.NewReader(content), testUserID)
 	assert.NoError(t, err, "Upload should not fail")
 
 	// Delete artifact
-	err = service.Delete(ctx, "npm", packageName, version, userID)
+	err = service.Delete(ctx, "npm", packageName, version, testUserID)
 	assert.NoError(t, err, "Delete should not fail")
 
 	// Verify download fails

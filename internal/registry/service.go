@@ -90,6 +90,7 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 
 	// Create artifact object
 	artifact := &types.Artifact{
+		ID:          uuid.New(), // Generate new UUID
 		Name:        utils.SanitizePackageName(name),
 		Version:     version,
 		Registry:    registryType,
@@ -113,7 +114,7 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 
 	// Check if artifact already exists
 	var existingArtifact types.Artifact
-	if err := s.DB.Where("name = ? AND version = ? AND registry = ?",
+	if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
 		artifact.Name, artifact.Version, artifact.Registry).First(&existingArtifact).Error; err == nil {
 		return nil, fmt.Errorf("artifact %s:%s already exists", name, version)
 	}
@@ -145,7 +146,7 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 
 	// Get artifact metadata from database
 	var artifact types.Artifact
-	if err := s.DB.Where("name = ? AND version = ? AND registry = ?",
+	if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
 		name, version, registryType).First(&artifact).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil, fmt.Errorf("artifact not found: %s:%s", name, version)
@@ -204,7 +205,7 @@ func (s *Service) List(ctx context.Context, filter *types.ArtifactFilter) ([]*ty
 func (s *Service) Delete(ctx context.Context, registryType, name, version string, userID uuid.UUID) error {
 	// Get artifact
 	var artifact types.Artifact
-	if err := s.DB.Where("name = ? AND version = ? AND registry = ?",
+	if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
 		name, version, registryType).First(&artifact).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return fmt.Errorf("artifact not found: %s:%s", name, version)
