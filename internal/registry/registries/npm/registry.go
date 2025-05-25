@@ -86,14 +86,23 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 	var manifest PackageManifest
 
 	// Assume content contains a mock package.json for testing
-	if err := json.Unmarshal(content[:100], &manifest); err == nil {
-		// If we can extract a manifest, validate name and version match
-		if manifest.Name != "" && manifest.Name != artifact.Name {
-			return fmt.Errorf("package name mismatch: %s vs %s", manifest.Name, artifact.Name)
+	// Only try to parse if we have content
+	if len(content) > 0 {
+		// Use the entire content or first 100 bytes, whichever is smaller
+		parseLength := len(content)
+		if parseLength > 100 {
+			parseLength = 100
 		}
+		
+		if err := json.Unmarshal(content[:parseLength], &manifest); err == nil {
+			// If we can extract a manifest, validate name and version match
+			if manifest.Name != "" && manifest.Name != artifact.Name {
+				return fmt.Errorf("package name mismatch: %s vs %s", manifest.Name, artifact.Name)
+			}
 
-		if manifest.Version != "" && manifest.Version != artifact.Version {
-			return fmt.Errorf("package version mismatch: %s vs %s", manifest.Version, artifact.Version)
+			if manifest.Version != "" && manifest.Version != artifact.Version {
+				return fmt.Errorf("package version mismatch: %s vs %s", manifest.Version, artifact.Version)
+			}
 		}
 	}
 
@@ -114,18 +123,44 @@ func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 	var manifest PackageManifest
 
 	// Assume content contains a mock package.json for testing
-	if err := json.Unmarshal(content[:100], &manifest); err == nil {
-		if manifest.Description != "" {
-			metadata["description"] = manifest.Description
+	// Only try to parse if we have content
+	if len(content) > 0 {
+		// Use the entire content or first 100 bytes, whichever is smaller
+		parseLength := len(content)
+		if parseLength > 100 {
+			parseLength = 100
 		}
-		if manifest.License != "" {
-			metadata["license"] = manifest.License
-		}
-		if len(manifest.Keywords) > 0 {
-			metadata["keywords"] = manifest.Keywords
-		}
-		if len(manifest.Dependencies) > 0 {
-			metadata["dependencies"] = manifest.Dependencies
+		
+		// For testing purposes, try to parse the entire content first
+		if err := json.Unmarshal(content, &manifest); err == nil {
+			if manifest.Description != "" {
+				metadata["description"] = manifest.Description
+			}
+			if manifest.License != "" {
+				metadata["license"] = manifest.License
+			}
+			if len(manifest.Keywords) > 0 {
+				metadata["keywords"] = manifest.Keywords
+			}
+			if len(manifest.Dependencies) > 0 {
+				metadata["dependencies"] = manifest.Dependencies
+			}
+		} else if parseLength < len(content) {
+			// If full content parsing failed, try with truncated content
+			if err := json.Unmarshal(content[:parseLength], &manifest); err == nil {
+				if manifest.Description != "" {
+					metadata["description"] = manifest.Description
+				}
+				if manifest.License != "" {
+					metadata["license"] = manifest.License
+				}
+				if len(manifest.Keywords) > 0 {
+					metadata["keywords"] = manifest.Keywords
+				}
+				if len(manifest.Dependencies) > 0 {
+					metadata["dependencies"] = manifest.Dependencies
+				}
+			}
 		}
 	}
 

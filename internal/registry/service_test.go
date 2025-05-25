@@ -244,7 +244,7 @@ func TestUpload_DuplicateArtifact(t *testing.T) {
 	// Set up mock expectations
 	mockHandler.On("Validate", mock.AnythingOfType("*types.Artifact"), content).Return(nil)
 	mockHandler.On("GetMetadata", content).Return(map[string]interface{}{}, nil)
-	mockHandler.On("GenerateStoragePath", "test-package", "1.0.0").Return("test/test-package/1.0.0/artifact")
+	// Note: GenerateStoragePath should not be called for duplicate artifacts
 
 	artifact, err := service.Upload(ctx, "test", "test-package", "1.0.0", reader, user.ID)
 
