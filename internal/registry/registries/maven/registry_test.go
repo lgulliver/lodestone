@@ -1,4 +1,4 @@
-package nuget
+package maven
 
 import (
 	"bytes"
@@ -81,22 +81,60 @@ func TestNew(t *testing.T) {
 	assert.Equal(t, mockStorage, registry.storage)
 }
 
-func TestUpload_Success(t *testing.T) {
+func TestUpload_JarArtifact(t *testing.T) {
 	registry, _, mockStorage := setupTestRegistry(t)
 	ctx := context.Background()
 
 	artifact := &types.Artifact{
-		Name:        "TestPackage",
+		Name:        "com.example:test-artifact",
 		Version:     "1.0.0",
-		StoragePath: "nuget/testpackage/1.0.0/testpackage.1.0.0.nupkg",
+		StoragePath: "maven/com/example/test-artifact/1.0.0/test-artifact-1.0.0.jar",
 	}
 
-	content := []byte("fake nupkg content")
+	content := []byte("fake jar content")
 
 	err := registry.Upload(ctx, artifact, content)
 
 	assert.NoError(t, err)
-	assert.Equal(t, "application/octet-stream", artifact.ContentType)
+	assert.Equal(t, "application/java-archive", artifact.ContentType)
+	assert.Contains(t, mockStorage.data, artifact.StoragePath)
+}
+
+func TestUpload_PomArtifact(t *testing.T) {
+	registry, _, mockStorage := setupTestRegistry(t)
+	ctx := context.Background()
+
+	artifact := &types.Artifact{
+		Name:        "com.example:test-artifact.pom",
+		Version:     "1.0.0",
+		StoragePath: "maven/com/example/test-artifact/1.0.0/test-artifact-1.0.0.pom",
+	}
+
+	content := []byte("<?xml version=\"1.0\"?><project>fake pom</project>")
+
+	err := registry.Upload(ctx, artifact, content)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "application/xml", artifact.ContentType)
+	assert.Contains(t, mockStorage.data, artifact.StoragePath)
+}
+
+func TestUpload_WarArtifact(t *testing.T) {
+	registry, _, mockStorage := setupTestRegistry(t)
+	ctx := context.Background()
+
+	artifact := &types.Artifact{
+		Name:        "com.example:webapp.war",
+		Version:     "1.0.0",
+		StoragePath: "maven/com/example/webapp/1.0.0/webapp-1.0.0.war",
+	}
+
+	content := []byte("fake war content")
+
+	err := registry.Upload(ctx, artifact, content)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "application/java-archive", artifact.ContentType)
 	assert.Contains(t, mockStorage.data, artifact.StoragePath)
 }
 
@@ -104,11 +142,11 @@ func TestValidate_Success(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
 	artifact := &types.Artifact{
-		Name:    "TestPackage",
+		Name:    "com.example:test-artifact",
 		Version: "1.0.0",
 	}
 
-	content := []byte("fake nupkg content")
+	content := []byte("fake jar content")
 
 	err := registry.Validate(artifact, content)
 
@@ -119,7 +157,7 @@ func TestValidate_EmptyContent(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
 	artifact := &types.Artifact{
-		Name:    "TestPackage",
+		Name:    "com.example:test-artifact",
 		Version: "1.0.0",
 	}
 
@@ -128,28 +166,29 @@ func TestValidate_EmptyContent(t *testing.T) {
 	err := registry.Validate(artifact, content)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "empty package content")
+	assert.Contains(t, err.Error(), "empty artifact content")
 }
 
-func TestValidate_InvalidPackageID(t *testing.T) {
+func TestValidate_InvalidCoordinates(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
 	tests := []struct {
-		name      string
-		packageID string
+		name           string
+		coordinates    string
+		expectedErrMsg string
 	}{
-		{"starts with hyphen", "-InvalidPackage"},
-		{"starts with dot", ".InvalidPackage"},
-		{"starts with underscore", "_InvalidPackage"},
-		{"contains spaces", "Invalid Package"},
-		{"contains special chars", "Invalid@Package"},
-		{"empty name", ""},
+		{"no colon", "invalid", "invalid Maven coordinates format"},
+		{"too many colons", "com.example:test:artifact:extra", "invalid Maven coordinates format"},
+		{"empty group", ":test-artifact", "invalid groupId format"},
+		{"empty artifact", "com.example:", "invalid artifactId format"},
+		{"invalid group chars", "com.example@:test-artifact", "invalid groupId format"},
+		{"invalid artifact chars", "com.example:test@artifact", "invalid artifactId format"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			artifact := &types.Artifact{
-				Name:    tt.packageID,
+				Name:    tt.coordinates,
 				Version: "1.0.0",
 			}
 
@@ -158,34 +197,28 @@ func TestValidate_InvalidPackageID(t *testing.T) {
 			err := registry.Validate(artifact, content)
 
 			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "invalid NuGet package ID format")
+			assert.Contains(t, err.Error(), tt.expectedErrMsg)
 		})
 	}
 }
 
-func TestValidate_ValidPackageIDs(t *testing.T) {
+func TestValidate_ValidCoordinates(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	validIDs := []string{
-		"TestPackage",
-		"Test.Package",
-		"Test-Package",
-		"Test_Package",
-		"TestPackage123",
-		"Microsoft.AspNetCore.App",
-		"Newtonsoft.Json",
-		"EntityFramework",
-		"A",
-		"A1",
-		"Package.With.Many.Dots",
-		"Package-With-Many-Hyphens",
-		"Package_With_Many_Underscores",
+	validCoordinates := []string{
+		"com.example:test-artifact",
+		"org.apache.commons:commons-lang3",
+		"io.github.user:my-library",
+		"junit:junit",
+		"com.fasterxml.jackson.core:jackson-core",
+		"org.springframework:spring-core",
+		"com.google.guava:guava",
 	}
 
-	for _, packageID := range validIDs {
-		t.Run(packageID, func(t *testing.T) {
+	for _, coordinates := range validCoordinates {
+		t.Run(coordinates, func(t *testing.T) {
 			artifact := &types.Artifact{
-				Name:    packageID,
+				Name:    coordinates,
 				Version: "1.0.0",
 			}
 
@@ -206,20 +239,14 @@ func TestValidate_InvalidVersions(t *testing.T) {
 		version string
 	}{
 		{"empty version", ""},
-		{"single number", "1"},
-		{"two numbers", "1.0"},
-		{"non-numeric", "abc"},
-		{"missing patch", "1.0."},
-		{"negative numbers", "-1.0.0"},
-		{"leading v", "v1.0.0"},
 		{"spaces", "1.0.0 "},
-		{"too many dots", "1.0.0.0"},
+		{"invalid chars", "1.0.0@"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			artifact := &types.Artifact{
-				Name:    "TestPackage",
+				Name:    "com.example:test-artifact",
 				Version: tt.version,
 			}
 
@@ -228,7 +255,7 @@ func TestValidate_InvalidVersions(t *testing.T) {
 			err := registry.Validate(artifact, content)
 
 			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "invalid semantic version format")
+			assert.Contains(t, err.Error(), "invalid Maven version format")
 		})
 	}
 }
@@ -238,21 +265,20 @@ func TestValidate_ValidVersions(t *testing.T) {
 
 	validVersions := []string{
 		"1.0.0",
-		"0.0.1",
-		"10.20.30",
-		"1.0.0-alpha",
-		"1.0.0-beta.1",
-		"1.0.0-rc.1",
-		"1.0.0-alpha.beta",
-		"1.0.0+build.123",
-		"1.0.0-alpha+build.123",
-		"2.0.0-rc.1+build.456",
+		"1.0.0-SNAPSHOT",
+		"2.1.4.RELEASE",
+		"1.0-alpha-1",
+		"1.0-beta",
+		"1.0-rc1",
+		"1.2.3-alpha-123",
+		"20220101",
+		"1.0.0.Final",
 	}
 
 	for _, version := range validVersions {
 		t.Run(version, func(t *testing.T) {
 			artifact := &types.Artifact{
-				Name:    "TestPackage",
+				Name:    "com.example:test-artifact",
 				Version: version,
 			}
 
@@ -268,45 +294,45 @@ func TestValidate_ValidVersions(t *testing.T) {
 func TestGetMetadata_Success(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	content := []byte("fake nupkg content")
+	content := []byte("fake jar content")
 
 	metadata, err := registry.GetMetadata(content)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, metadata)
-	assert.Equal(t, "nuget", metadata["format"])
-	assert.Equal(t, "package", metadata["type"])
-	assert.Equal(t, ".NET", metadata["framework"])
+	assert.Equal(t, "maven", metadata["format"])
+	assert.Equal(t, "library", metadata["type"])
+	assert.Equal(t, "Java", metadata["language"])
 }
 
-func TestGenerateStoragePath_RegularPackage(t *testing.T) {
+func TestGenerateStoragePath_RegularArtifact(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	path := registry.GenerateStoragePath("TestPackage", "1.0.0")
+	path := registry.GenerateStoragePath("com.example:test-artifact", "1.0.0")
 
-	assert.Equal(t, "nuget/testpackage/1.0.0/testpackage.1.0.0.nupkg", path)
+	assert.Equal(t, "maven/com/example/test-artifact/1.0.0/test-artifact-1.0.0.jar", path)
 }
 
-func TestGenerateStoragePath_MixedCase(t *testing.T) {
+func TestGenerateStoragePath_ComplexGroupId(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	path := registry.GenerateStoragePath("Microsoft.AspNetCore.App", "6.0.0")
+	path := registry.GenerateStoragePath("org.apache.commons:commons-lang3", "3.12.0")
 
-	assert.Equal(t, "nuget/microsoft.aspnetcore.app/6.0.0/microsoft.aspnetcore.app.6.0.0.nupkg", path)
+	assert.Equal(t, "maven/org/apache/commons/commons-lang3/3.12.0/commons-lang3-3.12.0.jar", path)
 }
 
-func TestGenerateStoragePath_PreReleaseVersion(t *testing.T) {
+func TestGenerateStoragePath_SnapshotVersion(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	path := registry.GenerateStoragePath("TestPackage", "1.0.0-alpha")
+	path := registry.GenerateStoragePath("com.example:test-artifact", "1.0.0-SNAPSHOT")
 
-	assert.Equal(t, "nuget/testpackage/1.0.0-alpha/testpackage.1.0.0-alpha.nupkg", path)
+	assert.Equal(t, "maven/com/example/test-artifact/1.0.0-SNAPSHOT/test-artifact-1.0.0-SNAPSHOT.jar", path)
 }
 
 func TestDownload_Deprecated(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	artifact, content, err := registry.Download("TestPackage", "1.0.0")
+	artifact, content, err := registry.Download("com.example:test-artifact", "1.0.0")
 
 	assert.Error(t, err)
 	assert.Nil(t, artifact)
@@ -328,7 +354,7 @@ func TestList_Deprecated(t *testing.T) {
 func TestDelete_Deprecated(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	err := registry.Delete("TestPackage", "1.0.0")
+	err := registry.Delete("com.example:test-artifact", "1.0.0")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "use service.Delete instead")
