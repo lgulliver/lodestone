@@ -258,8 +258,15 @@ func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*types.Use
 // ListAPIKeys lists API keys for a user
 func (s *Service) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]*types.APIKey, error) {
 	var apiKeys []*types.APIKey
-	if err := s.db.Where("user_id = ?", userID).Find(&apiKeys).Error; err != nil {
+	if err := s.db.Preload("User").Where("user_id = ?", userID).Find(&apiKeys).Error; err != nil {
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
+	}
+
+	// Clean up password from user data
+	for _, apiKey := range apiKeys {
+		if apiKey.User.ID != uuid.Nil {
+			apiKey.User.Password = ""
+		}
 	}
 
 	return apiKeys, nil

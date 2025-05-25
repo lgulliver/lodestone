@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // JSONMap is a custom type that can handle JSON serialization for both PostgreSQL and SQLite
@@ -52,6 +53,14 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// BeforeCreate generates a UUID for the user ID
+func (u *User) BeforeCreate(tx *gorm.DB) error {
+	if u.ID == uuid.Nil {
+		u.ID = uuid.New()
+	}
+	return nil
+}
+
 // APIKey represents an API key for programmatic access
 type APIKey struct {
 	ID          uuid.UUID  `json:"id" gorm:"primaryKey"`
@@ -65,6 +74,14 @@ type APIKey struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	User        User       `json:"user" gorm:"foreignKey:UserID"`
+}
+
+// BeforeCreate generates a UUID for the API key ID
+func (a *APIKey) BeforeCreate(tx *gorm.DB) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return nil
 }
 
 // Artifact represents a stored artifact
@@ -86,6 +103,14 @@ type Artifact struct {
 	Publisher   User      `json:"publisher" gorm:"foreignKey:PublishedBy"`
 }
 
+// BeforeCreate generates a UUID for the artifact ID
+func (a *Artifact) BeforeCreate(tx *gorm.DB) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return nil
+}
+
 // Permission represents a permission in the system
 type Permission struct {
 	ID            uuid.UUID `json:"id" gorm:"primaryKey"`
@@ -96,6 +121,14 @@ type Permission struct {
 	CreatedAt     time.Time `json:"created_at"`
 	User          User      `json:"user" gorm:"foreignKey:UserID"`
 	GrantedByUser User      `json:"granted_by_user" gorm:"foreignKey:GrantedBy"`
+}
+
+// BeforeCreate generates a UUID for the permission ID
+func (p *Permission) BeforeCreate(tx *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
 }
 
 // Registry interface for different artifact types

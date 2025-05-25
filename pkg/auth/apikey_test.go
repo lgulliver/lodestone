@@ -148,68 +148,6 @@ func TestValidateAPIKeyFormat(t *testing.T) {
 	}
 }
 
-func TestIsLegacyAPIKey(t *testing.T) {
-	tests := []struct {
-		name   string
-		apiKey string
-		want   bool
-	}{
-		{
-			name:   "valid legacy key",
-			apiKey: "abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
-			want:   true,
-		},
-		{
-			name:   "legacy key all zeros",
-			apiKey: "0000000000000000000000000000000000000000000000000000000000000000",
-			want:   true,
-		},
-		{
-			name:   "legacy key all f",
-			apiKey: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-			want:   true,
-		},
-		{
-			name:   "too short",
-			apiKey: "abcd1234567890abcdef1234567890abcdef1234567890abcdef12345678",
-			want:   false,
-		},
-		{
-			name:   "too long",
-			apiKey: "abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
-			want:   false,
-		},
-		{
-			name:   "uppercase hex",
-			apiKey: "ABCD1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890AB",
-			want:   false,
-		},
-		{
-			name:   "non-hex characters",
-			apiKey: "ghij1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
-			want:   false,
-		},
-		{
-			name:   "human-readable key",
-			apiKey: "north-quantum-dragon-neural-A1B2C3D4E5F6071829A0B1C2-prime",
-			want:   false,
-		},
-		{
-			name:   "empty string",
-			apiKey: "",
-			want:   false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsLegacyAPIKey(tt.apiKey); got != tt.want {
-				t.Errorf("IsLegacyAPIKey() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGetAPIKeyFormat(t *testing.T) {
 	// Generate a valid new key for testing
 	validKey, err := GenerateAPIKey()
@@ -231,11 +169,6 @@ func TestGetAPIKeyFormat(t *testing.T) {
 			name:   "human-readable example key",
 			apiKey: "north-quantum-dragon-neural-A1B2C3D4E5F6071829A0B1C2-prime",
 			want:   "human-readable",
-		},
-		{
-			name:   "legacy hex key",
-			apiKey: "abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
-			want:   "legacy-hex",
 		},
 		{
 			name:   "invalid key",
@@ -266,10 +199,6 @@ func TestHashAPIKey(t *testing.T) {
 		{
 			name: "human-readable key",
 			key:  "north-quantum-dragon-neural-A1B2C3D4E5F6071829A0B1C2-prime",
-		},
-		{
-			name: "legacy hex key",
-			key:  "abcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
 		},
 		{
 			name: "empty string",

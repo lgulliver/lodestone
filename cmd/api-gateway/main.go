@@ -26,11 +26,9 @@ func main() {
 	}
 	defer database.Close()
 
-	// Run database migrations automatically
-	if err := database.Migrate(); err != nil {
-		log.Fatal().Err(err).Msg("Failed to run database migrations")
-	}
-	log.Info().Msg("Database migrations completed successfully")
+	// Database migrations should be run separately using the migrate command
+	// This avoids conflicts between GORM AutoMigrate and SQL migrations
+	log.Info().Msg("Database connection established - migrations managed separately")
 
 	// Initialize cache (Redis)
 	cache, err := common.NewCache(&cfg.Redis)

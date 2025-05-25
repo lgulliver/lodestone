@@ -19,19 +19,31 @@ func AuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 // authMiddlewareWithInterface is the testable version that accepts an interface
 func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for JWT token in Authorization header
+		// Check for JWT token or API key in Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				token := strings.TrimPrefix(authHeader, "Bearer ")
 				ctx := context.WithValue(c.Request.Context(), "token", token)
 
+				// First try as JWT token
 				user, err := authService.ValidateToken(ctx, token)
 				if err == nil {
 					c.Set("user", user)
 					c.Next()
 					return
 				}
+
+				// If JWT validation fails, try as API key
+				log.Debug().Str("path", c.Request.URL.Path).Msg("JWT validation failed, trying as API key")
+				user, _, err = authService.ValidateAPIKey(ctx, token)
+				if err == nil {
+					log.Debug().Str("username", user.Username).Msg("API key validation successful")
+					c.Set("user", user)
+					c.Next()
+					return
+				}
+				log.Warn().Err(err).Msg("Both JWT and API key validation failed")
 			}
 		}
 
@@ -89,8 +101,14 @@ func optionalAuthMiddlewareWithInterface(authService AuthServiceInterface) gin.H
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 			ctx := context.WithValue(c.Request.Context(), "token", token)
 
+			// First try as JWT token
 			if user, err := authService.ValidateToken(ctx, token); err == nil {
 				c.Set("user", user)
+			} else {
+				// If JWT validation fails, try as API key
+				if user, _, err := authService.ValidateAPIKey(ctx, token); err == nil {
+					c.Set("user", user)
+				}
 			}
 		} else if apiKey := c.GetHeader("X-API-Key"); apiKey != "" {
 			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)

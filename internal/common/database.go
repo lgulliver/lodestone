@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/lgulliver/lodestone/pkg/config"
-	"github.com/lgulliver/lodestone/pkg/types"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -18,7 +17,7 @@ type Database struct {
 // NewDatabase creates a new database connection
 func NewDatabase(cfg *config.DatabaseConfig) (*Database, error) {
 	dsn := cfg.DatabaseURL()
-	
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
@@ -27,16 +26,6 @@ func NewDatabase(cfg *config.DatabaseConfig) (*Database, error) {
 	}
 
 	return &Database{DB: db}, nil
-}
-
-// Migrate runs database migrations
-func (db *Database) Migrate() error {
-	return db.AutoMigrate(
-		&types.User{},
-		&types.APIKey{},
-		&types.Artifact{},
-		&types.Permission{},
-	)
 }
 
 // Close closes the database connection

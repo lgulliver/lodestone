@@ -143,32 +143,13 @@ func ValidateAPIKeyFormat(apiKey string) bool {
 
 	// Validate hex component (24 uppercase hex characters)
 	hexPattern := regexp.MustCompile(`^[A-F0-9]{24}$`)
-	if !hexPattern.MatchString(hexPart) {
-		return false
-	}
-
-	return true
-}
-
-// IsLegacyAPIKey checks if an API key uses the old hex format
-func IsLegacyAPIKey(apiKey string) bool {
-	// Legacy keys are 64-character hex strings
-	if len(apiKey) != 64 {
-		return false
-	}
-
-	// Check if it's all hex characters
-	hexPattern := regexp.MustCompile(`^[a-f0-9]{64}$`)
-	return hexPattern.MatchString(apiKey)
+	return hexPattern.MatchString(hexPart)
 }
 
 // GetAPIKeyFormat returns the format type of an API key
 func GetAPIKeyFormat(apiKey string) string {
 	if ValidateAPIKeyFormat(apiKey) {
 		return "human-readable"
-	}
-	if IsLegacyAPIKey(apiKey) {
-		return "legacy-hex"
 	}
 	return "invalid"
 }
