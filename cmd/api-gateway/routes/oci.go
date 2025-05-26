@@ -6,17 +6,25 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/pkg/types"
+	"github.com/rs/zerolog/log"
 )
 
 // OCIRoutes sets up OCI (Docker) registry routes
 func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	oci := api.Group("/v2")
+
+	// Docker authentication endpoints
+	oci.GET("/auth", handleDockerAuth(authService))
+	oci.POST("/auth", handleDockerAuth(authService))
+	oci.GET("/token", handleDockerToken(authService))
+	oci.POST("/token", handleDockerToken(authService))
 
 	// Note: Base endpoint (/v2/) is handled by OCIRootRoutes catch-all handler
 
@@ -496,6 +504,21 @@ func handleOCIRequest(registryService *registry.Service, authService *auth.Servi
 			}
 		}
 
+		// Handle Docker authentication endpoints
+		if path == "auth" {
+			if method == "GET" || method == "POST" {
+				handleDockerAuth(authService)(c)
+				return
+			}
+		}
+
+		if path == "token" {
+			if method == "GET" || method == "POST" {
+				handleDockerToken(authService)(c)
+				return
+			}
+		}
+
 		// Handle catalog endpoint specifically
 		if path == "_catalog" {
 			if method == "GET" {
@@ -701,5 +724,167 @@ func handleOCIBlobUploadCatchAll(registryService *registry.Service) gin.HandlerF
 		}
 
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	}
+}
+
+// Docker authentication handlers
+func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Handle Docker login challenge
+		// Docker CLI sends credentials via Basic Auth
+		username, password, hasAuth := c.Request.BasicAuth()
+
+		if !hasAuth {
+			// Return authentication challenge
+			c.Header("WWW-Authenticate", `Basic realm="Lodestone Docker Registry"`)
+			c.Header("Docker-Distribution-API-Version", "registry/2.0")
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"errors": []gin.H{
+					{
+						"code":    "UNAUTHORIZED",
+						"message": "authentication required",
+					},
+				},
+			})
+			return
+		}
+
+		ctx := context.WithValue(c.Request.Context(), "docker_auth", true)
+
+		// Try to authenticate with username/password as API key
+		// Docker login typically uses username as anything and password as API key
+		var user *types.User
+		var err error
+
+		if password != "" {
+			// Try password as API key first
+			user, _, err = authService.ValidateAPIKey(ctx, password)
+			if err != nil {
+				// If API key validation fails, try traditional login
+				loginReq := &types.LoginRequest{
+					Username: username,
+					Password: password,
+				}
+				token, loginErr := authService.Login(ctx, loginReq)
+				if loginErr == nil {
+					// Login successful, validate the token to get user
+					user, err = authService.ValidateToken(ctx, token.Token)
+				} else {
+					err = loginErr
+				}
+			}
+		}
+
+		if err != nil {
+			c.Header("WWW-Authenticate", `Basic realm="Lodestone Docker Registry"`)
+			c.Header("Docker-Distribution-API-Version", "registry/2.0")
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"errors": []gin.H{
+					{
+						"code":    "UNAUTHORIZED",
+						"message": "invalid credentials",
+					},
+				},
+			})
+			return
+		}
+
+		// Authentication successful
+		c.Header("Docker-Distribution-API-Version", "registry/2.0")
+
+		// Log successful authentication
+		log.Info().
+			Str("username", username).
+			Str("user_id", user.ID.String()).
+			Msg("Docker authentication successful")
+
+		c.JSON(http.StatusOK, gin.H{
+			"access_token": password, // Return the API key as access token
+			"scope":        "repository:*:*",
+			"issued_at":    time.Now().Format(time.RFC3339),
+			"expires_in":   3600,
+		})
+	}
+}
+
+func handleDockerToken(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Handle Docker token requests (OAuth2-like flow)
+		service := c.Query("service")
+		scope := c.Query("scope")
+
+		// Check for Basic Auth
+		username, password, hasAuth := c.Request.BasicAuth()
+
+		if !hasAuth {
+			c.Header("WWW-Authenticate", `Basic realm="Lodestone Docker Registry"`)
+			c.Header("Docker-Distribution-API-Version", "registry/2.0")
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"errors": []gin.H{
+					{
+						"code":    "UNAUTHORIZED",
+						"message": "authentication required",
+					},
+				},
+			})
+			return
+		}
+
+		ctx := context.WithValue(c.Request.Context(), "docker_token", true)
+
+		// Authenticate using API key
+		var user *types.User
+		var err error
+
+		if password != "" {
+			// Try password as API key first
+			user, _, err = authService.ValidateAPIKey(ctx, password)
+			if err != nil {
+				// If API key validation fails, try traditional login
+				loginReq := &types.LoginRequest{
+					Username: username,
+					Password: password,
+				}
+				token, loginErr := authService.Login(ctx, loginReq)
+				if loginErr == nil {
+					user, err = authService.ValidateToken(ctx, token.Token)
+				} else {
+					err = loginErr
+				}
+			}
+		}
+
+		if err != nil {
+			c.Header("WWW-Authenticate", `Basic realm="Lodestone Docker Registry"`)
+			c.Header("Docker-Distribution-API-Version", "registry/2.0")
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"errors": []gin.H{
+					{
+						"code":    "UNAUTHORIZED",
+						"message": "invalid credentials",
+					},
+				},
+			})
+			return
+		}
+
+		// Generate a simple token response
+		// In a full implementation, this would be a proper JWT with the requested scope
+		c.Header("Docker-Distribution-API-Version", "registry/2.0")
+		c.JSON(http.StatusOK, gin.H{
+			"token":        password, // Use API key as token
+			"access_token": password,
+			"expires_in":   3600,
+			"issued_at":    time.Now().Format(time.RFC3339),
+			"scope":        scope,
+		})
+
+		// Log successful authentication
+		log.Info().
+			Str("username", username).
+			Str("service", service).
+			Str("scope", scope).
+			Str("user_id", user.ID.String()).
+			Msg("Docker token issued successfully")
 	}
 }
