@@ -18,6 +18,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Custom context key types to avoid collisions
+type contextKey string
+
+const (
+	registryKey    contextKey = "registry"
+	userIDKey      contextKey = "user_id"
+	dockerAuthKey  contextKey = "docker_auth"
+	dockerTokenKey contextKey = "docker_token"
+)
+
 // OCIRoutes sets up OCI (Docker) registry routes
 func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	oci := api.Group("/v2")
@@ -65,10 +75,7 @@ func OCIRootRoutes(router *gin.Engine, registryService *registry.Service, authSe
 // Gin wildcard parameters include the leading slash, so we need to strip it
 func extractRepositoryName(c *gin.Context) string {
 	name := c.Param("name")
-	if strings.HasPrefix(name, "/") {
-		return name[1:] // Remove leading slash
-	}
-	return name
+	return strings.TrimPrefix(name, "/")
 }
 
 func handleOCIBase() gin.HandlerFunc {
@@ -140,10 +147,6 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 		c.Header("Content-Length", fmt.Sprintf("%d", size))
 
 		c.Data(http.StatusOK, contentType, manifestContent)
-		if err != nil {
-			log.Error().Err(err).Str("repository", name).Str("reference", reference).Msg("Failed to stream manifest")
-			return
-		}
 
 		log.Debug().
 			Str("repository", name).
@@ -195,8 +198,8 @@ func handleOCIManifestPut(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		// Create artifact record in database
-		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		_, err = registryService.Upload(ctx, "oci", name, reference, strings.NewReader(""), user.ID)
 		if err != nil {
@@ -260,8 +263,8 @@ func handleOCIManifestDelete(registryService *registry.Service) gin.HandlerFunc 
 		}
 
 		// Also delete from database
-		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		err = registryService.Delete(ctx, "oci", name, reference, user.ID)
 		if err != nil {
@@ -434,8 +437,8 @@ func handleOCIBlobDelete(registryService *registry.Service) gin.HandlerFunc {
 		name := c.Param("name")
 		digest := c.Param("digest")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// Find and delete by digest
 		filter := &types.ArtifactFilter{
@@ -604,9 +607,6 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 		}
 
 		// Create artifact record in database
-		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
-
 		artifact := &types.Artifact{
 			Name:        name,
 			Version:     digest, // For blobs, version is the digest
@@ -722,7 +722,7 @@ func handleOCITagsList(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
 
 		filter := &types.ArtifactFilter{
 			Name:     name,
@@ -749,7 +749,7 @@ func handleOCITagsList(registryService *registry.Service) gin.HandlerFunc {
 
 func handleOCICatalog(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := context.WithValue(c.Request.Context(), "registry", "oci")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
 
 		filter := &types.ArtifactFilter{
 			Registry: "oci",
@@ -785,9 +785,7 @@ func handleOCIRequest(registryService *registry.Service, authService *auth.Servi
 		method := c.Request.Method
 
 		// Remove leading slash from path
-		if strings.HasPrefix(path, "/") {
-			path = path[1:]
-		}
+		path = strings.TrimPrefix(path, "/")
 
 		// Handle base endpoint for Docker CLI compatibility
 		if path == "" || path == "/" {
@@ -896,9 +894,7 @@ func extractRepositoryNameFromPath(path, pattern string) (string, string, bool) 
 func handleOCITagsListCatchAll(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Param("path")
-		if strings.HasPrefix(path, "/") {
-			path = path[1:]
-		}
+		path = strings.TrimPrefix(path, "/")
 
 		// Extract repository name (remove "/tags/list" suffix)
 		name := strings.TrimSuffix(path, "/tags/list")
@@ -913,9 +909,7 @@ func handleOCITagsListCatchAll(registryService *registry.Service) gin.HandlerFun
 func handleOCIManifestCatchAll(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Param("path")
-		if strings.HasPrefix(path, "/") {
-			path = path[1:]
-		}
+		path = strings.TrimPrefix(path, "/")
 
 		// Extract repository name and reference from path like "repo/name/manifests/tag"
 		name, reference, ok := extractRepositoryNameFromPath(path, "/manifests/")
@@ -947,9 +941,7 @@ func handleOCIManifestCatchAll(registryService *registry.Service) gin.HandlerFun
 func handleOCIBlobCatchAll(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Param("path")
-		if strings.HasPrefix(path, "/") {
-			path = path[1:]
-		}
+		path = strings.TrimPrefix(path, "/")
 
 		// Extract repository name and digest from path like "repo/name/blobs/sha256:..."
 		name, digest, ok := extractRepositoryNameFromPath(path, "/blobs/")
@@ -979,9 +971,7 @@ func handleOCIBlobCatchAll(registryService *registry.Service) gin.HandlerFunc {
 func handleOCIBlobUploadCatchAll(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Param("path")
-		if strings.HasPrefix(path, "/") {
-			path = path[1:]
-		}
+		path = strings.TrimPrefix(path, "/")
 
 		method := c.Request.Method
 
@@ -1045,7 +1035,7 @@ func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "docker_auth", true)
+		ctx := context.WithValue(c.Request.Context(), dockerAuthKey, true)
 
 		// Try to authenticate with username/password as API key
 		// Docker login typically uses username as anything and password as API key
@@ -1126,7 +1116,7 @@ func handleDockerToken(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "docker_token", true)
+		ctx := context.WithValue(c.Request.Context(), dockerTokenKey, true)
 
 		// Authenticate using API key
 		var user *types.User
