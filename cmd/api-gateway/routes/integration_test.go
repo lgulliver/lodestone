@@ -296,6 +296,7 @@ func TestRouteRegistrationIntegrity(t *testing.T) {
 		CargoRoutes,
 		RubyGemsRoutes,
 		OPARoutes,
+		OCIRoutes, // Add OCI routes to integration testing
 	}
 
 	for i, routeFunc := range routeFunctions {
@@ -317,6 +318,7 @@ func TestRouteRegistrationIntegrity(t *testing.T) {
 		"/api/cargo/",
 		"/api/gems/",
 		"/api/opa/",
+		"/api/v2/", // Add OCI route pattern
 	}
 
 	for _, pattern := range routePatterns {
