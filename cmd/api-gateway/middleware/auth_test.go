@@ -85,7 +85,8 @@ func TestAuthMiddleware_InvalidBearerToken(t *testing.T) {
 
 	mockAuth := new(MockAuthService)
 	mockAuth.On("ValidateToken", mock.Anything, "invalid-token").Return(nil, errors.New("invalid token"))
-	// Note: ValidateAPIKey should NOT be called when there's a Bearer token
+	// After JWT fails, it falls back to API key validation for Docker CLI compatibility
+	mockAuth.On("ValidateAPIKey", mock.Anything, "invalid-token").Return(nil, nil, errors.New("invalid api key"))
 
 	router := gin.New()
 	router.Use(authMiddlewareWithInterface(mockAuth))
@@ -250,6 +251,8 @@ func TestOptionalAuthMiddleware_InvalidToken(t *testing.T) {
 
 	mockAuth := new(MockAuthService)
 	mockAuth.On("ValidateToken", mock.Anything, "invalid-token").Return(nil, errors.New("invalid token"))
+	// After JWT fails, it falls back to API key validation for Docker CLI compatibility
+	mockAuth.On("ValidateAPIKey", mock.Anything, "invalid-token").Return(nil, nil, errors.New("invalid api key"))
 
 	var capturedNext bool
 
