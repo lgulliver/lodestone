@@ -26,7 +26,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 				token := strings.TrimPrefix(authHeader, "Bearer ")
 				ctx := context.WithValue(c.Request.Context(), "token", token)
 
-				// Validate as JWT token only - don't fall back to API key for Bearer tokens
+				// First try to validate as JWT token
 				user, err := authService.ValidateToken(ctx, token)
 				if err == nil {
 					c.Set("user", user)
@@ -34,7 +34,25 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 					return
 				}
 
-				log.Warn().Err(err).Str("path", c.Request.URL.Path).Msg("JWT token validation failed")
+				log.Debug().Err(err).Str("path", c.Request.URL.Path).Msg("JWT token validation failed, trying API key")
+
+				// Fall back to API key validation for Bearer tokens (Docker CLI compatibility)
+				ctx = context.WithValue(c.Request.Context(), "api_key", token)
+				user, _, err = authService.ValidateAPIKey(ctx, token)
+				if err == nil {
+					log.Debug().Str("username", user.Username).Msg("API key validation successful")
+					c.Set("user", user)
+					c.Next()
+					return
+				}
+
+				log.Warn().Err(err).Str("path", c.Request.URL.Path).Msg("Both JWT and API key validation failed")
+
+				// For OCI/Docker endpoints, return proper WWW-Authenticate header
+				if strings.HasPrefix(c.Request.URL.Path, "/v2/") {
+					c.Header("WWW-Authenticate", `Bearer realm="http://localhost:8080/v2/auth",service="registry",scope="repository:*:*"`)
+				}
+
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 				c.Abort()
 				return
@@ -76,6 +94,12 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 			Str("path", c.Request.URL.Path).
 			Str("client_ip", c.ClientIP()).
 			Msg("Unauthorized access attempt")
+
+		// For OCI/Docker endpoints, return proper WWW-Authenticate header
+		if strings.HasPrefix(c.Request.URL.Path, "/v2/") {
+			c.Header("WWW-Authenticate", `Bearer realm="http://localhost:8080/v2/auth",service="registry",scope="repository:*:*"`)
+		}
+
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		c.Abort()
 	}

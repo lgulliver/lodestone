@@ -1,7 +1,7 @@
 package main
 
 import (
-	"os"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
@@ -90,13 +90,15 @@ func main() {
 	routes.OCIRootRoutes(router, registryService, authService)
 
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 
-	log.Info().Str("port", port).Msg("Starting Lodestone API Gateway")
-	if err := router.Run(":" + port); err != nil {
+	log.Info().
+		Str("host", cfg.Server.Host).
+		Int("port", cfg.Server.Port).
+		Str("address", serverAddr).
+		Msg("Starting Lodestone API Gateway")
+
+	if err := router.Run(serverAddr); err != nil {
 		log.Fatal().Err(err).Msg("Failed to start server")
 	}
 }
