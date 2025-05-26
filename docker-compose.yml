@@ -5,8 +5,8 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lodestone}
       POSTGRES_USER: ${POSTGRES_USER:-lodestone}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lodestone}
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d
@@ -25,7 +25,7 @@ services:
   redis:
     image: redis:7-alpine
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-lodestone}
     command: >
       sh -c "
         if [ -n \"$$REDIS_PASSWORD\" ]; then
@@ -64,14 +64,14 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-lodestone}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-lodestone}
       DB_NAME: ${POSTGRES_DB:-lodestone}
-      DB_SSLMODE: ${DB_SSLMODE:-require}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
       
       # Redis config
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-lodestone}
       REDIS_DB: 0
       
       # Storage config

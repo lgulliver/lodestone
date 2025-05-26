@@ -222,9 +222,9 @@ log.Info().
 - Keep commits atomic and focused
 
 ### Code Quality
-- Run `go vet` and `golint`
+- Run `go vet` and `go lint`
 - Maintain test coverage
-- Use consistent formatting with `gofmt`
+- Use consistent formatting with `go fmt`
 - Document public APIs
 - If an error is made during generation, correct it but make note of the change
 

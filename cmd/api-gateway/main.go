@@ -79,13 +79,15 @@ func main() {
 	routes.AuthRoutes(api, authService)
 	routes.NuGetRoutes(api, registryService, authService)
 	routes.NPMRoutes(api, registryService, authService)
-	routes.OCIRoutes(api, registryService, authService)
 	routes.MavenRoutes(api, registryService, authService)
 	routes.GoRoutes(api, registryService, authService)
 	routes.HelmRoutes(api, registryService, authService)
 	routes.CargoRoutes(api, registryService, authService)
 	routes.RubyGemsRoutes(api, registryService, authService)
 	routes.OPARoutes(api, registryService, authService)
+
+	// OCI/Docker registry routes need to be at root level for Docker CLI compatibility
+	routes.OCIRootRoutes(router, registryService, authService)
 
 	// Start server
 	port := os.Getenv("PORT")

@@ -18,8 +18,7 @@ import (
 func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	oci := api.Group("/v2")
 
-	// Base endpoint for Docker registry API compatibility
-	oci.GET("/", handleOCIBase())
+	// Note: Base endpoint (/v2/) is handled by OCIRootRoutes catch-all handler
 
 	// Image manifest operations
 	oci.GET("/:name/manifests/:reference", middleware.OptionalAuthMiddleware(authService), handleOCIManifestGet(registryService))
@@ -46,6 +45,22 @@ func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authServ
 	oci.GET("/_catalog", middleware.OptionalAuthMiddleware(authService), handleOCICatalog(registryService))
 }
 
+// OCIRootRoutes sets up OCI (Docker) registry routes at root level for Docker CLI compatibility
+func OCIRootRoutes(router *gin.Engine, registryService *registry.Service, authService *auth.Service) {
+	// Use a catch-all route for all OCI operations including the base endpoint
+	router.Any("/v2/*path", handleOCIRequest(registryService, authService))
+}
+
+// Helper function to extract repository name from wildcard parameter
+// Gin wildcard parameters include the leading slash, so we need to strip it
+func extractRepositoryName(c *gin.Context) string {
+	name := c.Param("name")
+	if strings.HasPrefix(name, "/") {
+		return name[1:] // Remove leading slash
+	}
+	return name
+}
+
 func handleOCIBase() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Docker-Distribution-API-Version", "registry/2.0")
@@ -57,7 +72,7 @@ func handleOCIBase() gin.HandlerFunc {
 
 func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		name := c.Param("name")
+		name := extractRepositoryName(c)
 		reference := c.Param("reference")
 
 		if name == "" || reference == "" {
@@ -123,7 +138,7 @@ func handleOCIManifestPut(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		name := c.Param("name")
+		name := extractRepositoryName(c)
 		reference := c.Param("reference")
 
 		if name == "" || reference == "" {
@@ -337,7 +352,7 @@ func handleOCIBlobUploadStart(registryService *registry.Service) gin.HandlerFunc
 			return
 		}
 
-		name := c.Param("name")
+		name := extractRepositoryName(c)
 
 		// Generate a UUID for the upload session
 		uploadUUID := fmt.Sprintf("upload-%s-%d", name, user.ID)
@@ -456,5 +471,235 @@ func handleOCICatalog(registryService *registry.Service) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"repositories": repositories,
 		})
+	}
+}
+
+// handleOCIRequest is a catch-all handler that routes OCI requests based on path patterns
+func handleOCIRequest(registryService *registry.Service, authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Param("path")
+		method := c.Request.Method
+
+		// Remove leading slash from path
+		if strings.HasPrefix(path, "/") {
+			path = path[1:]
+		}
+
+		// Handle base endpoint for Docker CLI compatibility
+		if path == "" || path == "/" {
+			if method == "GET" {
+				c.Header("Docker-Distribution-API-Version", "registry/2.0")
+				c.JSON(http.StatusOK, gin.H{
+					"name": "Lodestone OCI Registry",
+				})
+				return
+			}
+		}
+
+		// Handle catalog endpoint specifically
+		if path == "_catalog" {
+			if method == "GET" {
+				middleware.OptionalAuthMiddleware(authService)(c)
+				if c.IsAborted() {
+					return
+				}
+				handleOCICatalog(registryService)(c)
+				return
+			}
+		}
+
+		// Parse the path to determine the operation
+		if strings.HasSuffix(path, "/tags/list") {
+			// Repository tags list
+			if method == "GET" {
+				middleware.OptionalAuthMiddleware(authService)(c)
+				if c.IsAborted() {
+					return
+				}
+				handleOCITagsListCatchAll(registryService)(c)
+				return
+			}
+		} else if strings.Contains(path, "/manifests/") {
+			// Manifest operations
+			middleware.OptionalAuthMiddleware(authService)(c)
+			if c.IsAborted() && (method == "PUT" || method == "DELETE") {
+				return
+			}
+			if method == "PUT" || method == "DELETE" {
+				middleware.AuthMiddleware(authService)(c)
+				if c.IsAborted() {
+					return
+				}
+			}
+			handleOCIManifestCatchAll(registryService)(c)
+			return
+		} else if strings.Contains(path, "/blobs/uploads/") {
+			// Blob upload operations
+			middleware.AuthMiddleware(authService)(c)
+			if c.IsAborted() {
+				return
+			}
+			handleOCIBlobUploadCatchAll(registryService)(c)
+			return
+		} else if strings.Contains(path, "/blobs/") {
+			// Blob operations
+			middleware.OptionalAuthMiddleware(authService)(c)
+			if c.IsAborted() && method == "DELETE" {
+				return
+			}
+			if method == "DELETE" {
+				middleware.AuthMiddleware(authService)(c)
+				if c.IsAborted() {
+					return
+				}
+			}
+			handleOCIBlobCatchAll(registryService)(c)
+			return
+		}
+
+		// If no pattern matches, return 404
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	}
+}
+
+// Helper function to extract repository name from catch-all path
+func extractRepositoryNameFromPath(path, pattern string) (string, string, bool) {
+	// For patterns like "repo/name/manifests/tag" -> ("repo/name", "tag")
+	if strings.Contains(path, pattern) {
+		parts := strings.Split(path, pattern)
+		if len(parts) == 2 {
+			return parts[0], parts[1], true
+		}
+	}
+	return "", "", false
+}
+
+func handleOCITagsListCatchAll(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Param("path")
+		if strings.HasPrefix(path, "/") {
+			path = path[1:]
+		}
+
+		// Extract repository name (remove "/tags/list" suffix)
+		name := strings.TrimSuffix(path, "/tags/list")
+
+		// Set the name parameter for compatibility with existing handler
+		c.Params = append(c.Params, gin.Param{Key: "name", Value: name})
+
+		handleOCITagsList(registryService)(c)
+	}
+}
+
+func handleOCIManifestCatchAll(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Param("path")
+		if strings.HasPrefix(path, "/") {
+			path = path[1:]
+		}
+
+		// Extract repository name and reference from path like "repo/name/manifests/tag"
+		name, reference, ok := extractRepositoryNameFromPath(path, "/manifests/")
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid manifest path"})
+			return
+		}
+
+		// Set parameters for compatibility with existing handlers
+		c.Params = append(c.Params, gin.Param{Key: "name", Value: name})
+		c.Params = append(c.Params, gin.Param{Key: "reference", Value: reference})
+
+		method := c.Request.Method
+		switch method {
+		case "GET":
+			handleOCIManifestGet(registryService)(c)
+		case "PUT":
+			handleOCIManifestPut(registryService)(c)
+		case "DELETE":
+			handleOCIManifestDelete(registryService)(c)
+		case "HEAD":
+			handleOCIManifestHead(registryService)(c)
+		default:
+			c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method not allowed"})
+		}
+	}
+}
+
+func handleOCIBlobCatchAll(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Param("path")
+		if strings.HasPrefix(path, "/") {
+			path = path[1:]
+		}
+
+		// Extract repository name and digest from path like "repo/name/blobs/sha256:..."
+		name, digest, ok := extractRepositoryNameFromPath(path, "/blobs/")
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid blob path"})
+			return
+		}
+
+		// Set parameters for compatibility with existing handlers
+		c.Params = append(c.Params, gin.Param{Key: "name", Value: name})
+		c.Params = append(c.Params, gin.Param{Key: "digest", Value: digest})
+
+		method := c.Request.Method
+		switch method {
+		case "GET":
+			handleOCIBlobGet(registryService)(c)
+		case "HEAD":
+			handleOCIBlobHead(registryService)(c)
+		case "DELETE":
+			handleOCIBlobDelete(registryService)(c)
+		default:
+			c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method not allowed"})
+		}
+	}
+}
+
+func handleOCIBlobUploadCatchAll(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Param("path")
+		if strings.HasPrefix(path, "/") {
+			path = path[1:]
+		}
+
+		method := c.Request.Method
+
+		if strings.HasSuffix(path, "/blobs/uploads/") {
+			// Start upload: POST /repo/name/blobs/uploads/
+			if method == "POST" {
+				name := strings.TrimSuffix(path, "/blobs/uploads/")
+				c.Params = append(c.Params, gin.Param{Key: "name", Value: name})
+				handleOCIBlobUploadStart(registryService)(c)
+				return
+			}
+		} else if strings.Contains(path, "/blobs/uploads/") {
+			// Upload operations with UUID: /repo/name/blobs/uploads/uuid
+			name, uuid, ok := extractRepositoryNameFromPath(path, "/blobs/uploads/")
+			if !ok {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid upload path"})
+				return
+			}
+
+			c.Params = append(c.Params, gin.Param{Key: "name", Value: name})
+			c.Params = append(c.Params, gin.Param{Key: "uuid", Value: uuid})
+
+			switch method {
+			case "PATCH":
+				handleOCIBlobUploadChunk(registryService)(c)
+			case "PUT":
+				handleOCIBlobUploadComplete(registryService)(c)
+			case "DELETE":
+				handleOCIBlobUploadCancel(registryService)(c)
+			case "GET":
+				handleOCIBlobUploadStatus(registryService)(c)
+			default:
+				c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method not allowed"})
+			}
+			return
+		}
+
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 	}
 }
