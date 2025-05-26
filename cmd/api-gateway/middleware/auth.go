@@ -95,9 +95,15 @@ func optionalAuthMiddlewareWithInterface(authService AuthServiceInterface) gin.H
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 			ctx := context.WithValue(c.Request.Context(), "token", token)
 
-			// Validate as JWT token only - don't fall back to API key for Bearer tokens
+			// First try to validate as JWT token
 			if user, err := authService.ValidateToken(ctx, token); err == nil {
 				c.Set("user", user)
+			} else {
+				// Fall back to API key validation for Bearer tokens (Docker CLI compatibility)
+				ctx := context.WithValue(c.Request.Context(), "api_key", token)
+				if user, _, err := authService.ValidateAPIKey(ctx, token); err == nil {
+					c.Set("user", user)
+				}
 			}
 			// For optional auth, we continue even if JWT validation fails
 		} else if apiKey := c.GetHeader("X-API-Key"); apiKey != "" {
