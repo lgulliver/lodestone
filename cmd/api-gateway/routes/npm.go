@@ -17,6 +17,8 @@ import (
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/internal/registry"
 	"github.com/lgulliver/lodestone/pkg/types"
+	"github.com/lgulliver/lodestone/pkg/utils"
+	"github.com/rs/zerolog/log"
 )
 
 // NPMRoutes sets up npm registry routes
@@ -43,6 +45,24 @@ func NPMRoutes(api *gin.RouterGroup, registryService *registry.Service, authServ
 
 	// Search
 	npm.GET("/-/v1/search", handleNPMSearch(registryService))
+}
+
+// computeArtifactSHA1 computes the SHA1 hash of an artifact's content
+func computeArtifactSHA1(ctx context.Context, registryService *registry.Service, artifact *types.Artifact) (string, error) {
+	// Download the artifact content
+	_, content, err := registryService.Download(ctx, artifact.Registry, artifact.Name, artifact.Version)
+	if err != nil {
+		return "", fmt.Errorf("failed to download artifact for SHA1 computation: %w", err)
+	}
+	defer content.Close()
+
+	// Read all content and compute SHA1
+	contentBytes, err := io.ReadAll(content)
+	if err != nil {
+		return "", fmt.Errorf("failed to read artifact content: %w", err)
+	}
+
+	return utils.ComputeSHA1(contentBytes), nil
 }
 
 func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
@@ -88,14 +108,24 @@ func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
 				}
 			}
 
+			// Compute SHA1 hash for npm compatibility
+			shasum, err := computeArtifactSHA1(ctx, registryService, artifact)
+			if err != nil {
+				log.Error().Err(err).
+					Str("package", artifact.Name).
+					Str("version", artifact.Version).
+					Msg("failed to compute SHA1 hash, falling back to SHA256")
+				shasum = artifact.SHA256 // fallback to SHA256 if SHA1 computation fails
+			}
+
 			versions[artifact.Version] = gin.H{
 				"name":        artifact.Name,
 				"version":     artifact.Version,
 				"description": description,
 				"author":      author,
 				"dist": gin.H{
-					"shasum":  artifact.SHA256,
-					"tarball": fmt.Sprintf("/npm/%s/-/%s-%s.tgz", artifact.Name, artifact.Name, artifact.Version),
+					"shasum":  shasum,
+					"tarball": fmt.Sprintf("http://%s/api/v1/npm/%s/-/%s-%s.tgz", c.Request.Host, artifact.Name, artifact.Name, artifact.Version),
 				},
 			}
 
@@ -140,14 +170,24 @@ func handleNPMPackageVersion(registryService *registry.Service) gin.HandlerFunc 
 			}
 		}
 
+		// Compute SHA1 hash for npm compatibility
+		shasum, err := computeArtifactSHA1(ctx, registryService, artifact)
+		if err != nil {
+			log.Error().Err(err).
+				Str("package", artifact.Name).
+				Str("version", artifact.Version).
+				Msg("failed to compute SHA1 hash, falling back to SHA256")
+			shasum = artifact.SHA256 // fallback to SHA256 if SHA1 computation fails
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"name":        artifact.Name,
 			"version":     artifact.Version,
 			"description": description,
 			"author":      author,
 			"dist": gin.H{
-				"shasum":  artifact.SHA256,
-				"tarball": fmt.Sprintf("/npm/%s/-/%s-%s.tgz", artifact.Name, artifact.Name, artifact.Version),
+				"shasum":  shasum,
+				"tarball": fmt.Sprintf("http://%s/api/v1/npm/%s/-/%s-%s.tgz", c.Request.Host, artifact.Name, artifact.Name, artifact.Version),
 			},
 		})
 	}
@@ -194,14 +234,24 @@ func handleNPMScopedPackageInfo(registryService *registry.Service) gin.HandlerFu
 				}
 			}
 
+			// Compute SHA1 hash for npm compatibility
+			shasum, err := computeArtifactSHA1(ctx, registryService, artifact)
+			if err != nil {
+				log.Error().Err(err).
+					Str("package", artifact.Name).
+					Str("version", artifact.Version).
+					Msg("failed to compute SHA1 hash, falling back to SHA256")
+				shasum = artifact.SHA256 // fallback to SHA256 if SHA1 computation fails
+			}
+
 			versions[artifact.Version] = gin.H{
 				"name":        artifact.Name,
 				"version":     artifact.Version,
 				"description": description,
 				"author":      author,
 				"dist": gin.H{
-					"shasum":  artifact.SHA256,
-					"tarball": fmt.Sprintf("/npm/@%s/%s/-/%s-%s.tgz", scope, name, name, artifact.Version),
+					"shasum":  shasum,
+					"tarball": fmt.Sprintf("http://%s/api/v1/npm/@%s/%s/-/%s-%s.tgz", c.Request.Host, scope, name, name, artifact.Version),
 				},
 			}
 			distTags["latest"] = artifact.Version
@@ -241,14 +291,24 @@ func handleNPMScopedPackageVersion(registryService *registry.Service) gin.Handle
 			}
 		}
 
+		// Compute SHA1 hash for npm compatibility
+		shasum, err := computeArtifactSHA1(ctx, registryService, artifact)
+		if err != nil {
+			log.Error().Err(err).
+				Str("package", artifact.Name).
+				Str("version", artifact.Version).
+				Msg("failed to compute SHA1 hash, falling back to SHA256")
+			shasum = artifact.SHA256 // fallback to SHA256 if SHA1 computation fails
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"name":        artifact.Name,
 			"version":     artifact.Version,
 			"description": description,
 			"author":      author,
 			"dist": gin.H{
-				"shasum":  artifact.SHA256,
-				"tarball": fmt.Sprintf("/npm/@%s/%s/-/%s-%s.tgz", scope, name, name, artifact.Version),
+				"shasum":  shasum,
+				"tarball": fmt.Sprintf("http://%s/api/v1/npm/@%s/%s/-/%s-%s.tgz", c.Request.Host, scope, name, name, artifact.Version),
 			},
 		})
 	}
@@ -263,10 +323,20 @@ func handleNPMDownload(registryService *registry.Service) gin.HandlerFunc {
 		version := strings.TrimPrefix(filename, packageName+"-")
 		version = strings.TrimSuffix(version, ".tgz")
 
+		log.Info().
+			Str("package", packageName).
+			Str("version", version).
+			Str("filename", filename).
+			Msg("downloading npm package")
+
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
 
 		artifact, content, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
+			log.Error().Err(err).
+				Str("package", packageName).
+				Str("version", version).
+				Msg("failed to download npm package")
 			c.JSON(http.StatusNotFound, gin.H{"error": "package not found"})
 			return
 		}
@@ -340,63 +410,128 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
+		log.Info().
+			Str("package_name", packageName).
+			Str("user_id", user.ID.String()).
+			Msg("Processing NPM publish request")
+
 		// Extract package.json and tarball from publish data
 		attachments, ok := publishData["_attachments"].(map[string]interface{})
 		if !ok {
+			log.Error().Msg("Missing _attachments in publish data")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing package attachments"})
 			return
 		}
 
+		log.Info().
+			Int("attachment_count", len(attachments)).
+			Msg("Found attachments in publish data")
+
 		// Process each attachment (tarball)
 		for filename, attachment := range attachments {
+			log.Info().
+				Str("filename", filename).
+				Msg("Processing attachment")
+
 			attachmentData, ok := attachment.(map[string]interface{})
 			if !ok {
+				log.Warn().
+					Str("filename", filename).
+					Msg("Attachment data is not a map, skipping")
 				continue
 			}
 
 			data, ok := attachmentData["data"].(string)
 			if !ok {
+				log.Warn().
+					Str("filename", filename).
+					Msg("Attachment data field is not a string, skipping")
 				continue
 			}
+
+			log.Info().
+				Str("filename", filename).
+				Int("base64_length", len(data)).
+				Msg("Found base64 data in attachment")
 
 			// Decode base64 tarball data
 			tarballData, err := base64.StdEncoding.DecodeString(data)
 			if err != nil {
+				log.Error().
+					Err(err).
+					Str("filename", filename).
+					Msg("Failed to decode base64 data")
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid base64 data"})
 				return
 			}
 
+			log.Info().
+				Str("filename", filename).
+				Int("tarball_size", len(tarballData)).
+				Msg("Successfully decoded tarball data")
+
 			// Extract package.json from tarball
 			packageJSON, version, err := extractPackageJSONFromTarball(tarballData)
 			if err != nil {
+				log.Error().
+					Err(err).
+					Str("filename", filename).
+					Msg("Failed to extract package.json from tarball")
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to extract package.json: %v", err)})
 				return
 			}
 
+			log.Info().
+				Str("filename", filename).
+				Str("extracted_name", packageJSON["name"].(string)).
+				Str("extracted_version", version).
+				Msg("Successfully extracted package.json")
+
 			// Validate package name matches
 			if packageJSON["name"] != packageName {
+				log.Error().
+					Str("expected_name", packageName).
+					Str("actual_name", packageJSON["name"].(string)).
+					Msg("Package name mismatch")
 				c.JSON(http.StatusBadRequest, gin.H{"error": "package name mismatch"})
 				return
 			}
 
+			log.Info().
+				Str("package_name", packageName).
+				Str("version", version).
+				Msg("Starting artifact upload to registry service")
+
 			// Upload the package
 			artifact, err := registryService.Upload(ctx, "npm", packageName, version, bytes.NewReader(tarballData), user.ID)
 			if err != nil {
+				log.Error().
+					Err(err).
+					Str("package_name", packageName).
+					Str("version", version).
+					Msg("Failed to upload package to registry service")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upload package: %v", err)})
 				return
 			}
+
+			log.Info().
+				Str("package_name", packageName).
+				Str("version", version).
+				Str("artifact_id", artifact.ID.String()).
+				Msg("Successfully uploaded package to registry service")
 
 			c.JSON(http.StatusCreated, gin.H{
 				"ok":  true,
 				"id":  packageName,
 				"rev": fmt.Sprintf("1-%s", version), // Simplified revision
 			})
-			
+
 			_ = filename // Mark as used
 			_ = artifact // Mark as used
 			return
 		}
 
+		log.Error().Msg("No valid package data found in attachments")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no valid package data found"})
 	}
 }
@@ -473,7 +608,7 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 				"id":  packageName,
 				"rev": fmt.Sprintf("1-%s", version), // Simplified revision
 			})
-			
+
 			_ = filename // Mark as used
 			_ = artifact // Mark as used
 			return

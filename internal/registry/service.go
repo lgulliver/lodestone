@@ -154,9 +154,20 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 		return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
 
+	// Log artifact details
+	log.Info().
+		Str("name", artifact.Name).
+		Str("version", artifact.Version).
+		Str("storage_path", artifact.StoragePath).
+		Int64("size", artifact.Size).
+		Msg("found artifact in database")
+
 	// Get content from storage
 	content, err := s.Storage.Retrieve(ctx, artifact.StoragePath)
 	if err != nil {
+		log.Error().Err(err).
+			Str("storage_path", artifact.StoragePath).
+			Msg("failed to retrieve artifact from storage")
 		return nil, nil, fmt.Errorf("failed to retrieve artifact: %w", err)
 	}
 

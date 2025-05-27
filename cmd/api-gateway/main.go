@@ -37,8 +37,9 @@ func main() {
 		cache = nil // Optional component
 	}
 
-	// Initialize storage backend
-	storageBackend, err := storage.NewLocalStorage("./storage")
+	// Initialize storage backend using factory
+	storageFactory := storage.NewStorageFactory(&cfg.Storage)
+	storageBackend, err := storageFactory.CreateStorage()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize storage")
 	}

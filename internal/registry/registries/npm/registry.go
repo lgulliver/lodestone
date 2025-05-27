@@ -3,17 +3,18 @@ package npm
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
-	"io"
-	"compress/gzip"
 
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/types"
+	"github.com/rs/zerolog/log"
 )
 
 // Registry implements the npm package registry
@@ -45,11 +46,36 @@ func New(storage storage.BlobStorage, db *common.Database) *Registry {
 
 // Upload stores an npm package
 func (r *Registry) Upload(ctx context.Context, artifact *types.Artifact, content []byte) error {
+	log.Info().
+		Str("package", artifact.Name).
+		Str("version", artifact.Version).
+		Str("storage_path", artifact.StoragePath).
+		Int("content_size", len(content)).
+		Msg("Starting NPM package storage")
+
 	// Store the content
 	reader := bytes.NewReader(content)
+
+	log.Debug().
+		Str("storage_path", artifact.StoragePath).
+		Int("content_size", len(content)).
+		Msg("Calling storage.Store for NPM package")
+
 	if err := r.storage.Store(ctx, artifact.StoragePath, reader, "application/octet-stream"); err != nil {
+		log.Error().
+			Err(err).
+			Str("package", artifact.Name).
+			Str("version", artifact.Version).
+			Str("storage_path", artifact.StoragePath).
+			Msg("Failed to store NPM package to storage")
 		return fmt.Errorf("failed to store npm package: %w", err)
 	}
+
+	log.Info().
+		Str("package", artifact.Name).
+		Str("version", artifact.Version).
+		Str("storage_path", artifact.StoragePath).
+		Msg("NPM package stored successfully to storage")
 
 	artifact.ContentType = "application/octet-stream"
 	return nil

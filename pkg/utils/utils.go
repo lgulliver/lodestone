@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -77,9 +78,24 @@ func ComputeSHA256(data []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// ComputeSHA1 computes the SHA1 hash of data
+func ComputeSHA1(data []byte) string {
+	hash := sha1.Sum(data)
+	return hex.EncodeToString(hash[:])
+}
+
 // ComputeSHA256FromReader computes SHA256 hash from an io.Reader
 func ComputeSHA256FromReader(reader io.Reader) (string, error) {
 	hash := sha256.New()
+	if _, err := io.Copy(hash, reader); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// ComputeSHA1FromReader computes SHA1 hash from an io.Reader
+func ComputeSHA1FromReader(reader io.Reader) (string, error) {
+	hash := sha1.New()
 	if _, err := io.Copy(hash, reader); err != nil {
 		return "", err
 	}
@@ -123,16 +139,16 @@ func IsValidRegistryType(registryType string) bool {
 
 // FormatBytes formats byte size in human-readable format
 func FormatBytes(bytes int64) string {
-    const unit = 1024
-    if bytes < unit {
-        return fmt.Sprintf("%d B", bytes)
-    }
-    div, exp := int64(unit), 0
-    for n := bytes / unit; n >= unit; n /= unit {
-        div *= unit
-        exp++
-    }
-    return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMG"[exp])
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMG"[exp])
 }
 
 // DecodeBase64 decodes a base64 encoded string
