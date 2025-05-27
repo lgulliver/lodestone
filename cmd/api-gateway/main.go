@@ -64,13 +64,15 @@ func main() {
 		c.Next()
 	})
 
-	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
+	// Health check endpoint - support both GET and HEAD for Docker health checks
+	healthHandler := func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "healthy",
 			"service": "lodestone-api-gateway",
 		})
-	})
+	}
+	router.GET("/health", healthHandler)
+	router.HEAD("/health", healthHandler)
 
 	// API routes
 	api := router.Group("/api/v1")

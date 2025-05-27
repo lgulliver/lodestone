@@ -1,7 +1,12 @@
 package routes
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -331,21 +336,18 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		// Extract package.json and tarball from publish data
-		// This is a simplified implementation - real npm publish is more complex
 		packageName := c.Param("name")
-
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		// For now, we'll need the actual tarball data
-		// This would typically come from the _attachments field in the publish data
+		// Extract package.json and tarball from publish data
 		attachments, ok := publishData["_attachments"].(map[string]interface{})
 		if !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing package attachments"})
 			return
 		}
 
+		// Process each attachment (tarball)
 		for filename, attachment := range attachments {
 			attachmentData, ok := attachment.(map[string]interface{})
 			if !ok {
@@ -357,14 +359,41 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 				continue
 			}
 
-			// TODO: Decode base64 data and upload
-			_ = data
-			_ = filename
+			// Decode base64 tarball data
+			tarballData, err := base64.StdEncoding.DecodeString(data)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid base64 data"})
+				return
+			}
+
+			// Extract package.json from tarball
+			packageJSON, version, err := extractPackageJSONFromTarball(tarballData)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to extract package.json: %v", err)})
+				return
+			}
+
+			// Validate package name matches
+			if packageJSON["name"] != packageName {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "package name mismatch"})
+				return
+			}
+
+			// Upload the package
+			artifact, err := registryService.Upload(ctx, "npm", packageName, version, bytes.NewReader(tarballData), user.ID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upload package: %v", err)})
+				return
+			}
 
 			c.JSON(http.StatusCreated, gin.H{
-				"ok": true,
-				"id": packageName,
+				"ok":  true,
+				"id":  packageName,
+				"rev": fmt.Sprintf("1-%s", version), // Simplified revision
 			})
+			
+			_ = filename // Mark as used
+			_ = artifact // Mark as used
 			return
 		}
 
@@ -393,20 +422,64 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		// Similar to handleNPMPublish but for scoped packages
+		// Extract package.json and tarball from publish data
 		attachments, ok := publishData["_attachments"].(map[string]interface{})
 		if !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing package attachments"})
 			return
 		}
 
-		// Process attachments...
-		_ = attachments
+		// Process each attachment (tarball)
+		for filename, attachment := range attachments {
+			attachmentData, ok := attachment.(map[string]interface{})
+			if !ok {
+				continue
+			}
 
-		c.JSON(http.StatusCreated, gin.H{
-			"ok": true,
-			"id": packageName,
-		})
+			data, ok := attachmentData["data"].(string)
+			if !ok {
+				continue
+			}
+
+			// Decode base64 tarball data
+			tarballData, err := base64.StdEncoding.DecodeString(data)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid base64 data"})
+				return
+			}
+
+			// Extract package.json from tarball
+			packageJSON, version, err := extractPackageJSONFromTarball(tarballData)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to extract package.json: %v", err)})
+				return
+			}
+
+			// Validate package name matches
+			if packageJSON["name"] != packageName {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "package name mismatch"})
+				return
+			}
+
+			// Upload the package
+			artifact, err := registryService.Upload(ctx, "npm", packageName, version, bytes.NewReader(tarballData), user.ID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to upload package: %v", err)})
+				return
+			}
+
+			c.JSON(http.StatusCreated, gin.H{
+				"ok":  true,
+				"id":  packageName,
+				"rev": fmt.Sprintf("1-%s", version), // Simplified revision
+			})
+			
+			_ = filename // Mark as used
+			_ = artifact // Mark as used
+			return
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no valid package data found"})
 	}
 }
 
@@ -525,4 +598,53 @@ func handleNPMSearch(registryService *registry.Service) gin.HandlerFunc {
 			"time":    "0ms",
 		})
 	}
+}
+
+// extractPackageJSONFromTarball extracts and parses package.json from an npm tarball
+func extractPackageJSONFromTarball(tarballData []byte) (map[string]interface{}, string, error) {
+	// Create a gzip reader
+	gzipReader, err := gzip.NewReader(bytes.NewReader(tarballData))
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzipReader.Close()
+
+	// Create a tar reader
+	tarReader := tar.NewReader(gzipReader)
+
+	// Look for package.json in the tarball
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		// Look for package.json file (could be in package/ directory)
+		if strings.HasSuffix(header.Name, "package.json") {
+			// Read the package.json content
+			packageJSONBytes, err := io.ReadAll(tarReader)
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to read package.json: %w", err)
+			}
+
+			// Parse package.json
+			var packageJSON map[string]interface{}
+			if err := json.Unmarshal(packageJSONBytes, &packageJSON); err != nil {
+				return nil, "", fmt.Errorf("failed to parse package.json: %w", err)
+			}
+
+			// Extract version
+			version, ok := packageJSON["version"].(string)
+			if !ok {
+				return nil, "", fmt.Errorf("package.json missing version field")
+			}
+
+			return packageJSON, version, nil
+		}
+	}
+
+	return nil, "", fmt.Errorf("package.json not found in tarball")
 }

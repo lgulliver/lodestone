@@ -1,12 +1,15 @@
 package npm
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+	"io"
+	"compress/gzip"
 
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/storage"
@@ -80,30 +83,19 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 		return fmt.Errorf("invalid npm package name format")
 	}
 
-	// Extract package.json from the tarball to validate
-	// This is a simplified validation - in a real implementation, we would extract
-	// and parse package.json from the tarball
-	var manifest PackageManifest
+	// Extract and validate package.json from the tarball
+	packageJSON, err := extractPackageJSONFromTarball(content)
+	if err != nil {
+		return fmt.Errorf("failed to extract package.json: %w", err)
+	}
 
-	// Assume content contains a mock package.json for testing
-	// Only try to parse if we have content
-	if len(content) > 0 {
-		// Use the entire content or first 100 bytes, whichever is smaller
-		parseLength := len(content)
-		if parseLength > 100 {
-			parseLength = 100
-		}
+	// Validate name and version match
+	if packageJSON.Name != "" && packageJSON.Name != artifact.Name {
+		return fmt.Errorf("package name mismatch: %s vs %s", packageJSON.Name, artifact.Name)
+	}
 
-		if err := json.Unmarshal(content[:parseLength], &manifest); err == nil {
-			// If we can extract a manifest, validate name and version match
-			if manifest.Name != "" && manifest.Name != artifact.Name {
-				return fmt.Errorf("package name mismatch: %s vs %s", manifest.Name, artifact.Name)
-			}
-
-			if manifest.Version != "" && manifest.Version != artifact.Version {
-				return fmt.Errorf("package version mismatch: %s vs %s", manifest.Version, artifact.Version)
-			}
-		}
+	if packageJSON.Version != "" && packageJSON.Version != artifact.Version {
+		return fmt.Errorf("package version mismatch: %s vs %s", packageJSON.Version, artifact.Version)
 	}
 
 	return nil
@@ -111,60 +103,89 @@ func (r *Registry) Validate(artifact *types.Artifact, content []byte) error {
 
 // GetMetadata extracts metadata from npm package
 func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
-	// Extract package.json from the tarball
-	// In a real implementation, we would extract and parse package.json
-
 	metadata := map[string]interface{}{
 		"format": "npm",
 		"type":   "package",
 	}
 
-	// Try to extract some basic info from the tarball
-	var manifest PackageManifest
+	// Extract package.json from the tarball
+	packageJSON, err := extractPackageJSONFromTarball(content)
+	if err != nil {
+		// If we can't extract package.json, return basic metadata
+		return metadata, nil
+	}
 
-	// Assume content contains a mock package.json for testing
-	// Only try to parse if we have content
-	if len(content) > 0 {
-		// Use the entire content or first 100 bytes, whichever is smaller
-		parseLength := len(content)
-		if parseLength > 100 {
-			parseLength = 100
-		}
+	// Add extracted metadata
+	if packageJSON.Description != "" {
+		metadata["description"] = packageJSON.Description
+	}
+	if packageJSON.License != "" {
+		metadata["license"] = packageJSON.License
+	}
+	if len(packageJSON.Keywords) > 0 {
+		metadata["keywords"] = packageJSON.Keywords
+	}
+	if len(packageJSON.Dependencies) > 0 {
+		metadata["dependencies"] = packageJSON.Dependencies
+	}
+	if len(packageJSON.DevDependencies) > 0 {
+		metadata["devDependencies"] = packageJSON.DevDependencies
+	}
 
-		// For testing purposes, try to parse the entire content first
-		if err := json.Unmarshal(content, &manifest); err == nil {
-			if manifest.Description != "" {
-				metadata["description"] = manifest.Description
-			}
-			if manifest.License != "" {
-				metadata["license"] = manifest.License
-			}
-			if len(manifest.Keywords) > 0 {
-				metadata["keywords"] = manifest.Keywords
-			}
-			if len(manifest.Dependencies) > 0 {
-				metadata["dependencies"] = manifest.Dependencies
-			}
-		} else if parseLength < len(content) {
-			// If full content parsing failed, try with truncated content
-			if err := json.Unmarshal(content[:parseLength], &manifest); err == nil {
-				if manifest.Description != "" {
-					metadata["description"] = manifest.Description
-				}
-				if manifest.License != "" {
-					metadata["license"] = manifest.License
-				}
-				if len(manifest.Keywords) > 0 {
-					metadata["keywords"] = manifest.Keywords
-				}
-				if len(manifest.Dependencies) > 0 {
-					metadata["dependencies"] = manifest.Dependencies
-				}
-			}
-		}
+	// Handle author field (can be string or object)
+	if packageJSON.Author != nil {
+		metadata["author"] = packageJSON.Author
+	}
+
+	// Handle repository field (can be string or object)
+	if packageJSON.Repository != nil {
+		metadata["repository"] = packageJSON.Repository
 	}
 
 	return metadata, nil
+}
+
+// extractPackageJSONFromTarball extracts and parses package.json from an npm tarball
+func extractPackageJSONFromTarball(tarballData []byte) (*PackageManifest, error) {
+	// Create a gzip reader
+	gzipReader, err := gzip.NewReader(bytes.NewReader(tarballData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzipReader.Close()
+
+	// Create a tar reader
+	tarReader := tar.NewReader(gzipReader)
+
+	// Look for package.json in the tarball
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		// Look for package.json file (could be in package/ directory)
+		if strings.HasSuffix(header.Name, "package.json") {
+			// Read the package.json content
+			packageJSONBytes, err := io.ReadAll(tarReader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read package.json: %w", err)
+			}
+
+			// Parse package.json
+			var packageJSON PackageManifest
+			if err := json.Unmarshal(packageJSONBytes, &packageJSON); err != nil {
+				return nil, fmt.Errorf("failed to parse package.json: %w", err)
+			}
+
+			return &packageJSON, nil
+		}
+	}
+
+	return nil, fmt.Errorf("package.json not found in tarball")
 }
 
 // GenerateStoragePath creates the storage path for npm packages
