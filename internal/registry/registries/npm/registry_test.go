@@ -1,9 +1,14 @@
 package npm
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/pkg/types"
@@ -66,6 +71,51 @@ func setupTestRegistry(t *testing.T) (*Registry, *MockBlobStorage, *common.Datab
 
 	registry := New(mockStorage, db)
 	return registry, mockStorage, db
+}
+
+// createTestPackageTarball creates a sample npm package tarball for testing
+func createTestPackageTarball(packageData map[string]interface{}) ([]byte, error) {
+	// Create a buffer to write our tarball to
+	var buf bytes.Buffer
+
+	// Create gzip writer
+	gw := gzip.NewWriter(&buf)
+
+	// Create tar writer
+	tw := tar.NewWriter(gw)
+
+	// Marshal package.json data
+	packageJSON, err := json.Marshal(packageData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add package.json file to tarball
+	header := &tar.Header{
+		Name:    "package/package.json",
+		Mode:    0644,
+		Size:    int64(len(packageJSON)),
+		ModTime: time.Now(),
+	}
+
+	if err := tw.WriteHeader(header); err != nil {
+		return nil, err
+	}
+
+	if _, err := tw.Write(packageJSON); err != nil {
+		return nil, err
+	}
+
+	// Close writers
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+
+	if err := gw.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func TestNew(t *testing.T) {
@@ -133,10 +183,16 @@ func TestValidate_Success(t *testing.T) {
 		Version: "1.0.0",
 	}
 
-	content := []byte(`{"name":"test-package","version":"1.0.0","description":"A test package"}`)
+	packageData := map[string]interface{}{
+		"name":        "test-package",
+		"version":     "1.0.0",
+		"description": "A test package",
+	}
 
-	err := registry.Validate(artifact, content)
+	content, err := createTestPackageTarball(packageData)
+	require.NoError(t, err)
 
+	err = registry.Validate(artifact, content)
 	assert.NoError(t, err)
 }
 
@@ -148,10 +204,15 @@ func TestValidate_ScopedPackage(t *testing.T) {
 		Version: "1.0.0",
 	}
 
-	content := []byte(`{"name":"@scope/test-package","version":"1.0.0"}`)
+	packageData := map[string]interface{}{
+		"name":    "@scope/test-package",
+		"version": "1.0.0",
+	}
 
-	err := registry.Validate(artifact, content)
+	content, err := createTestPackageTarball(packageData)
+	require.NoError(t, err)
 
+	err = registry.Validate(artifact, content)
 	assert.NoError(t, err)
 }
 
@@ -190,10 +251,15 @@ func TestValidate_InvalidPackageName(t *testing.T) {
 				Version: "1.0.0",
 			}
 
-			content := []byte(`{"name":"` + tc.packageName + `","version":"1.0.0"}`)
+			packageData := map[string]interface{}{
+				"name":    tc.packageName,
+				"version": "1.0.0",
+			}
 
-			err := registry.Validate(artifact, content)
+			content, err := createTestPackageTarball(packageData)
+			require.NoError(t, err)
 
+			err = registry.Validate(artifact, content)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "invalid npm package name format")
 		})
@@ -209,10 +275,15 @@ func TestValidate_NameMismatch(t *testing.T) {
 	}
 
 	// Content has different package name
-	content := []byte(`{"name":"different-package","version":"1.0.0"}`)
+	packageData := map[string]interface{}{
+		"name":    "different-package",
+		"version": "1.0.0",
+	}
 
-	err := registry.Validate(artifact, content)
+	content, err := createTestPackageTarball(packageData)
+	require.NoError(t, err)
 
+	err = registry.Validate(artifact, content)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "package name mismatch")
 }
@@ -226,10 +297,15 @@ func TestValidate_VersionMismatch(t *testing.T) {
 	}
 
 	// Content has different version
-	content := []byte(`{"name":"test-package","version":"2.0.0"}`)
+	packageData := map[string]interface{}{
+		"name":    "test-package",
+		"version": "2.0.0",
+	}
 
-	err := registry.Validate(artifact, content)
+	content, err := createTestPackageTarball(packageData)
+	require.NoError(t, err)
 
+	err = registry.Validate(artifact, content)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "package version mismatch")
 }
@@ -237,7 +313,16 @@ func TestValidate_VersionMismatch(t *testing.T) {
 func TestGetMetadata_Success(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	content := []byte(`{"name":"test-package","version":"1.0.0","description":"A test package","license":"MIT","keywords":["test","package"]}`)
+	packageData := map[string]interface{}{
+		"name":        "test-package",
+		"version":     "1.0.0",
+		"description": "A test package",
+		"license":     "MIT",
+		"keywords":    []string{"test", "package"},
+	}
+
+	content, err := createTestPackageTarball(packageData)
+	require.NoError(t, err)
 
 	metadata, err := registry.GetMetadata(content)
 
@@ -247,14 +332,30 @@ func TestGetMetadata_Success(t *testing.T) {
 	assert.Equal(t, "package", metadata["type"])
 	assert.Equal(t, "A test package", metadata["description"])
 	assert.Equal(t, "MIT", metadata["license"])
-	assert.Contains(t, metadata["keywords"], "test")
-	assert.Contains(t, metadata["keywords"], "package")
+
+	keywords, ok := metadata["keywords"].([]string)
+	assert.True(t, ok)
+	assert.Contains(t, keywords, "test")
+	assert.Contains(t, keywords, "package")
+
+	// Check time structure
+	timeInfo, ok := metadata["time"].(map[string]string)
+	assert.True(t, ok)
+	assert.Contains(t, timeInfo, "created")
+	assert.Contains(t, timeInfo, "modified")
+	assert.Contains(t, timeInfo, "1.0.0")
 }
 
 func TestGetMetadata_MinimalPackage(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	content := []byte(`{"name":"test-package","version":"1.0.0"}`)
+	packageData := map[string]interface{}{
+		"name":    "test-package",
+		"version": "1.0.0",
+	}
+
+	content, err := createTestPackageTarball(packageData)
+	require.NoError(t, err)
 
 	metadata, err := registry.GetMetadata(content)
 
@@ -266,12 +367,24 @@ func TestGetMetadata_MinimalPackage(t *testing.T) {
 	assert.NotContains(t, metadata, "description")
 	assert.NotContains(t, metadata, "license")
 	assert.NotContains(t, metadata, "keywords")
+
+	// Check for default dist-tags
+	distTags, ok := metadata["dist-tags"].(map[string]string)
+	assert.True(t, ok)
+	assert.Equal(t, "1.0.0", distTags["latest"])
 }
 
 func TestGetMetadata_WithDependencies(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
-	content := []byte(`{"name":"test-package","version":"1.0.0","dependencies":{"lodash":"^4.17.21","express":"^4.18.0"}}`)
+	packageData := map[string]interface{}{
+		"name":         "test-package",
+		"version":      "1.0.0",
+		"dependencies": map[string]string{"lodash": "^4.17.21", "express": "^4.18.0"},
+	}
+
+	content, err := createTestPackageTarball(packageData)
+	require.NoError(t, err)
 
 	metadata, err := registry.GetMetadata(content)
 

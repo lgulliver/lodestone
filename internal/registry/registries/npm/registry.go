@@ -10,6 +10,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/storage"
@@ -25,15 +26,25 @@ type Registry struct {
 
 // PackageManifest represents package.json structure
 type PackageManifest struct {
-	Name            string            `json:"name"`
-	Version         string            `json:"version"`
-	Description     string            `json:"description,omitempty"`
-	Author          interface{}       `json:"author,omitempty"` // Can be string or object
-	License         string            `json:"license,omitempty"`
-	Dependencies    map[string]string `json:"dependencies,omitempty"`
-	DevDependencies map[string]string `json:"devDependencies,omitempty"`
-	Keywords        []string          `json:"keywords,omitempty"`
-	Repository      interface{}       `json:"repository,omitempty"` // Can be string or object
+	Name            string                 `json:"name"`
+	Version         string                 `json:"version"`
+	Description     string                 `json:"description,omitempty"`
+	Author          interface{}            `json:"author,omitempty"` // Can be string or object
+	License         string                 `json:"license,omitempty"`
+	Dependencies    map[string]string      `json:"dependencies,omitempty"`
+	DevDependencies map[string]string      `json:"devDependencies,omitempty"`
+	Keywords        []string               `json:"keywords,omitempty"`
+	Repository      interface{}            `json:"repository,omitempty"` // Can be string or object
+	DistTags        map[string]string      `json:"dist-tags,omitempty"` // For npm dist-tags like latest, beta, etc.
+	PublishConfig   map[string]interface{} `json:"publishConfig,omitempty"` // For npm publish configuration
+	Time            interface{}            `json:"time,omitempty"`          // For version timestamps
+	Homepage        string                 `json:"homepage,omitempty"`      // Project homepage URL
+	Bugs            interface{}            `json:"bugs,omitempty"`          // Issue tracker details
+	Scripts         map[string]string      `json:"scripts,omitempty"`       // NPM scripts
+	Contributors    interface{}            `json:"contributors,omitempty"`  // Can be array of strings or objects
+	Engines         map[string]string      `json:"engines,omitempty"`       // Engine compatibility
+	PeerDependencies map[string]string     `json:"peerDependencies,omitempty"` // Peer dependencies
+	Deprecated      string                 `json:"deprecated,omitempty"`    // Deprecation message
 }
 
 // New creates a new npm registry handler
@@ -157,6 +168,27 @@ func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 	if len(packageJSON.DevDependencies) > 0 {
 		metadata["devDependencies"] = packageJSON.DevDependencies
 	}
+	if len(packageJSON.PeerDependencies) > 0 {
+		metadata["peerDependencies"] = packageJSON.PeerDependencies
+	}
+	if packageJSON.Deprecated != "" {
+		metadata["deprecated"] = packageJSON.Deprecated
+	}
+	if packageJSON.Homepage != "" {
+		metadata["homepage"] = packageJSON.Homepage
+	}
+	if packageJSON.Bugs != nil {
+		metadata["bugs"] = packageJSON.Bugs
+	}
+	if len(packageJSON.Scripts) > 0 {
+		metadata["scripts"] = packageJSON.Scripts
+	}
+	if len(packageJSON.Engines) > 0 {
+		metadata["engines"] = packageJSON.Engines
+	}
+	if packageJSON.Contributors != nil {
+		metadata["contributors"] = packageJSON.Contributors
+	}
 
 	// Handle author field (can be string or object)
 	if packageJSON.Author != nil {
@@ -167,6 +199,49 @@ func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 	if packageJSON.Repository != nil {
 		metadata["repository"] = packageJSON.Repository
 	}
+	
+	// Handle dist-tags
+	if len(packageJSON.DistTags) > 0 {
+		metadata["dist-tags"] = packageJSON.DistTags
+	} else {
+		// Default to setting this version as "latest" if no dist-tags are provided
+		// but only if it's not a prerelease version
+		isPrerelease := false
+		if packageJSON.Version != "" {
+			// Use a simple regex to detect prerelease versions
+			prereleaseRegex := regexp.MustCompile(`[-+].`)
+			isPrerelease = prereleaseRegex.MatchString(packageJSON.Version)
+		}
+		
+		if !isPrerelease {
+			metadata["dist-tags"] = map[string]string{"latest": packageJSON.Version}
+		}
+	}
+	
+	// Handle time information
+	currentTime := time.Now().Format(time.RFC3339)
+	timeMap := map[string]string{
+		"created":  currentTime,
+		"modified": currentTime,
+	}
+	
+	if packageJSON.Version != "" {
+		timeMap[packageJSON.Version] = currentTime
+	}
+	
+	if packageJSON.Time != nil {
+		// If packageJSON already has time information, merge it
+		switch t := packageJSON.Time.(type) {
+		case map[string]interface{}:
+			for k, v := range t {
+				if strVal, ok := v.(string); ok {
+					timeMap[k] = strVal
+				}
+			}
+		}
+	}
+	
+	metadata["time"] = timeMap
 
 	return metadata, nil
 }
