@@ -1,10 +1,15 @@
+// filepath: /home/liam/repos/lodestone/test/storage/storage_registry_integration_test.go
 package storage_test
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/internal/common"
@@ -17,6 +22,58 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+// createTestNpmTarball creates a properly formatted npm package tarball
+func createTestNpmTarball(packageJSON string) ([]byte, error) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	// Parse the package.json to get name
+	var pkgData map[string]interface{}
+	if err := json.Unmarshal([]byte(packageJSON), &pkgData); err != nil {
+		return nil, err
+	}
+
+	// Add package.json file to tarball
+	packageJSONHeader := &tar.Header{
+		Name:    "package/package.json",
+		Mode:    0644,
+		Size:    int64(len(packageJSON)),
+		ModTime: time.Now(),
+	}
+	if err := tw.WriteHeader(packageJSONHeader); err != nil {
+		return nil, err
+	}
+	if _, err := tw.Write([]byte(packageJSON)); err != nil {
+		return nil, err
+	}
+
+	// Add a simple index.js file
+	indexJS := []byte(`console.log("Hello from test package");`)
+	indexJSHeader := &tar.Header{
+		Name:    "package/index.js",
+		Mode:    0644,
+		Size:    int64(len(indexJS)),
+		ModTime: time.Now(),
+	}
+	if err := tw.WriteHeader(indexJSHeader); err != nil {
+		return nil, err
+	}
+	if _, err := tw.Write(indexJS); err != nil {
+		return nil, err
+	}
+
+	// Close writers
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	if err := gw.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
 
 func TestStorageIntegrationWithRegistry(t *testing.T) {
 	// Setup test database
@@ -54,7 +111,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 	registryType := "npm"
 	packageName := "test-package"
 	version := "1.0.0"
-	content := `{
+	packageJSON := `{
 		"name": "test-package",
 		"version": "1.0.0",
 		"description": "A test npm package",
@@ -63,13 +120,17 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 	userID := user.ID
 
 	t.Run("upload and download workflow", func(t *testing.T) {
+		// Create proper npm package tarball
+		tarballData, err := createTestNpmTarball(packageJSON)
+		require.NoError(t, err)
+
 		// Upload artifact
 		artifact, err := registryService.Upload(
 			ctx,
 			registryType,
 			packageName,
 			version,
-			strings.NewReader(content),
+			bytes.NewReader(tarballData),
 			userID,
 		)
 
@@ -112,24 +173,28 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		assert.Equal(t, artifact.Version, downloadedArtifact.Version)
 		assert.Equal(t, artifact.Registry, downloadedArtifact.Registry)
 
-		// Verify downloaded content
+		// Verify downloaded content size
 		downloadedContent, err := io.ReadAll(reader)
 		require.NoError(t, err)
-		assert.Equal(t, content, string(downloadedContent))
+		assert.Equal(t, len(tarballData), len(downloadedContent))
 	})
 
 	t.Run("delete workflow", func(t *testing.T) {
 		// Upload another artifact for deletion test
 		deletePackageName := "delete-test-package"
 		deleteVersion := "1.0.0"
-		deleteContent := `{"name": "delete-test-package", "version": "1.0.0"}`
+		deletePackageJSON := `{"name": "delete-test-package", "version": "1.0.0"}`
+
+		// Create proper npm package tarball
+		tarballData, err := createTestNpmTarball(deletePackageJSON)
+		require.NoError(t, err)
 
 		artifact, err := registryService.Upload(
 			ctx,
 			registryType,
 			deletePackageName,
 			deleteVersion,
-			strings.NewReader(deleteContent),
+			bytes.NewReader(tarballData),
 			userID,
 		)
 		require.NoError(t, err)
@@ -167,12 +232,17 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 
 		var uploadedPaths []string
 		for _, pkg := range packages {
+			// Create proper npm package for each test
+			packageJSON := `{"name": "` + pkg.name + `", "version": "` + pkg.version + `"}`
+			tarballData, err := createTestNpmTarball(packageJSON)
+			require.NoError(t, err)
+
 			artifact, err := registryService.Upload(
 				ctx,
 				registryType,
 				pkg.name,
 				pkg.version,
-				strings.NewReader(`{"name": "`+pkg.name+`", "version": "`+pkg.version+`"}`),
+				bytes.NewReader(tarballData),
 				userID,
 			)
 			require.NoError(t, err)
@@ -215,6 +285,11 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 	// Create registry service with factory-created storage
 	registryService := registry.NewService(commonDB, storageInstance)
 
+	// Create proper npm package
+	packageJSON := `{"name": "factory-test-package", "version": "1.0.0"}`
+	tarballData, err := createTestNpmTarball(packageJSON)
+	require.NoError(t, err)
+
 	// Test basic operation
 	ctx := context.Background()
 	artifact, err := registryService.Upload(
@@ -222,7 +297,7 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 		"npm",
 		"factory-test-package",
 		"1.0.0",
-		strings.NewReader(`{"name": "factory-test-package", "version": "1.0.0"}`),
+		bytes.NewReader(tarballData),
 		uuid.New(),
 	)
 

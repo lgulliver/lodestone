@@ -184,9 +184,9 @@ func processDistTags(artifacts []*types.Artifact, versionList []string) map[stri
 // buildVersionObject creates a standardized version object for NPM package responses
 func buildVersionObject(c *gin.Context, artifact *types.Artifact, shasum string) gin.H {
 	versionObj := gin.H{
-		"name":        artifact.Name,
-		"version":     artifact.Version,
-		"_id":         artifact.Name + "@" + artifact.Version,
+		"name":    artifact.Name,
+		"version": artifact.Version,
+		"_id":     artifact.Name + "@" + artifact.Version,
 		"dist": gin.H{
 			"shasum":  shasum,
 			"tarball": generateTarballURL(c, artifact.Name, artifact.Version),
@@ -248,18 +248,18 @@ func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
 		// Process artifacts
 		versions := make(map[string]interface{})
 		versionList := make([]string, 0, len(artifacts))
-		
+
 		// Get list of all versions
 		for _, artifact := range artifacts {
 			versionList = append(versionList, artifact.Version)
 		}
-		
+
 		// Sort versions for consistent ordering
 		utils.SortSemver(versionList)
-				
+
 		// Process time information for all artifacts
 		times := processTimes(artifacts)
-		
+
 		// Process artifacts and build version objects
 		for _, artifact := range artifacts {
 			// Compute SHA1 hash for npm compatibility
@@ -276,7 +276,7 @@ func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
 			versionObj := buildVersionObject(c, artifact, shasum)
 			versions[artifact.Version] = versionObj
 		}
-		
+
 		// Process distribution tags
 		distTags := processDistTags(artifacts, versionList)
 
@@ -317,13 +317,13 @@ func handleNPMPackageVersion(registryService *registry.Service) gin.HandlerFunc 
 				Msg("failed to compute SHA1 hash, falling back to SHA256")
 			shasum = artifact.SHA256 // fallback to SHA256 if SHA1 computation fails
 		}
-		
+
 		// Build version response using our helper function
 		versionObj := buildVersionObject(c, artifact, shasum)
-		
+
 		// Add time information
 		versionObj["time"] = artifact.CreatedAt.Format(time.RFC3339)
-		
+
 		c.JSON(http.StatusOK, versionObj)
 	}
 }
@@ -355,18 +355,18 @@ func handleNPMScopedPackageInfo(registryService *registry.Service) gin.HandlerFu
 		// Process artifacts
 		versions := make(map[string]interface{})
 		versionList := make([]string, 0, len(artifacts))
-		
+
 		// Get list of all versions
 		for _, artifact := range artifacts {
 			versionList = append(versionList, artifact.Version)
 		}
-		
+
 		// Sort versions for consistent ordering
 		utils.SortSemver(versionList)
-		
+
 		// Process time information for all artifacts
 		times := processTimes(artifacts)
-		
+
 		// Process artifacts and build version objects
 		for _, artifact := range artifacts {
 			// Compute SHA1 hash for npm compatibility
@@ -383,7 +383,7 @@ func handleNPMScopedPackageInfo(registryService *registry.Service) gin.HandlerFu
 			versionObj := buildVersionObject(c, artifact, shasum)
 			versions[artifact.Version] = versionObj
 		}
-		
+
 		// Process distribution tags
 		distTags := processDistTags(artifacts, versionList)
 
@@ -424,10 +424,10 @@ func handleNPMScopedPackageVersion(registryService *registry.Service) gin.Handle
 
 		// Build version response using our helper function
 		versionObj := buildVersionObject(c, artifact, shasum)
-		
+
 		// Add time information
 		versionObj["time"] = artifact.CreatedAt.Format(time.RFC3339)
-		
+
 		c.JSON(http.StatusOK, versionObj)
 	}
 }
@@ -641,13 +641,13 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 						Registry: "npm",
 						Name:     packageName,
 					})
-					
+
 					latestTagExists := false
 					latestVersion := ""
-					
+
 					for _, art := range existingArtifacts {
 						existingVersions = append(existingVersions, art.Version)
-						
+
 						// Look for existing latest tag in metadata
 						if art.Metadata != nil {
 							if dtags, ok := art.Metadata["dist-tags"].(map[string]interface{}); ok {
@@ -662,7 +662,7 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 							}
 						}
 					}
-					
+
 					// If there's an existing latest tag, compare the versions
 					if latestTagExists && latestVersion != "" {
 						// Only take over "latest" tag if this version is greater
@@ -703,12 +703,12 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 			if packageJSON["metadata"] == nil {
 				packageJSON["metadata"] = make(map[string]interface{})
 			}
-			
+
 			// Add distTags to metadata
 			if len(distTags) > 0 {
 				packageJSON["dist-tags"] = distTags
 			}
-			
+
 			// Store time information in metadata
 			now := time.Now().Format(time.RFC3339)
 			timeInfo := map[string]string{
@@ -864,7 +864,7 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "package name mismatch"})
 				return
 			}
-			
+
 			// Extract dist-tags from publish data if available
 			distTags := make(map[string]string)
 			if publishDataDistTags, ok := publishData["dist-tags"].(map[string]interface{}); ok {
@@ -891,13 +891,13 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 						Registry: "npm",
 						Name:     packageName,
 					})
-					
+
 					latestTagExists := false
 					latestVersion := ""
-					
+
 					for _, art := range existingArtifacts {
 						existingVersions = append(existingVersions, art.Version)
-						
+
 						// Look for existing latest tag in metadata
 						if art.Metadata != nil {
 							if dtags, ok := art.Metadata["dist-tags"].(map[string]interface{}); ok {
@@ -912,7 +912,7 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 							}
 						}
 					}
-					
+
 					// If there's an existing latest tag, compare the versions
 					if latestTagExists && latestVersion != "" {
 						// Only take over "latest" tag if this version is greater
@@ -953,12 +953,12 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 			if packageJSON["metadata"] == nil {
 				packageJSON["metadata"] = make(map[string]interface{})
 			}
-			
+
 			// Add distTags to metadata
 			if len(distTags) > 0 {
 				packageJSON["dist-tags"] = distTags
 			}
-			
+
 			// Store time information in metadata
 			now := time.Now().Format(time.RFC3339)
 			timeInfo := map[string]string{
@@ -967,12 +967,12 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 				version:    now,
 			}
 			packageJSON["time"] = timeInfo
-			
+
 			log.Info().
 				Str("package_name", packageName).
 				Str("version", version).
 				Msg("Starting artifact upload to registry service")
-				
+
 			// Upload the package with enhanced metadata
 			artifact, err := registryService.Upload(ctx, "npm", packageName, version, bytes.NewReader(tarballData), user.ID)
 			if err != nil {
@@ -1174,7 +1174,7 @@ func extractPackageJSONFromTarball(tarballData []byte) (map[string]interface{}, 
 }
 
 // getPrereleaseIdentifier extracts the prerelease identifier from a semver version
-// For example: 
+// For example:
 // - "1.0.0-beta.1" returns "beta"
 // - "2.0.0-alpha.3" returns "alpha"
 // - "3.0.0-rc.5" returns "rc"
@@ -1185,13 +1185,13 @@ func getPrereleaseIdentifier(version string) string {
 	if err != nil {
 		return ""
 	}
-	
+
 	// Get the prerelease string
 	prerelease := sv.Prerelease()
 	if prerelease == "" {
 		return ""
 	}
-	
+
 	// Extract the identifier part (before the first dot or digit)
 	identifierEnd := 0
 	for i, c := range prerelease {
@@ -1200,10 +1200,10 @@ func getPrereleaseIdentifier(version string) string {
 			break
 		}
 	}
-	
+
 	if identifierEnd > 0 {
 		return prerelease[:identifierEnd]
 	}
-	
+
 	return prerelease
 }

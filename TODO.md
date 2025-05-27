@@ -1,23 +1,5 @@
 # List of todo items
 
-**🚀 DEPLOYMENT STATUS: 98% Complete - All core functionality operational, ready for production!**
-
-## 🎯 IMMEDIATE NEXT STEPS
-
-### High Priority (Ready to implement)
-1. **Fix API Key Creation** - Debug the 500 error in `/api/auth/api-keys` endpoint
-2. **Complete Client Integration Testing** - Test end-to-end package operations with real clients (npm, docker, nuget commands)
-3. **Implement Package Ownership Validation** - Ensure only package owners can modify their packages
-4. **Add Performance Testing** - Test with large package uploads and concurrent users
-
-### Medium Priority (Implementation ready)
-1. **Add Comprehensive API Documentation** - Generate OpenAPI/Swagger documentation
-2. **Implement Cloud Storage Backends** - Add S3, Azure, GCP storage support
-3. **Add Advanced Metadata Extraction** - Enhanced metadata parsing for each package format
-4. **Implement Web UI** - Frontend for package management and browsing
-
----
-
 - [x] Move logging to use zerolog
 - [x] Complete auth service
   - [x] Local accounts
@@ -98,8 +80,17 @@
 - [x] Implement metadata extraction from uploaded packages (✅ COMPLETE - Basic metadata extraction working)
 - [x] Add format-specific package validation (✅ COMPLETE - Regex validation, content checks, coordinate validation)
 - [x] Ensure Docker commands (`docker pull`, `docker push`) work against OCI registry
-- [ ] Ensure npm commands (`npm install`, `npm publish`) work against npm registry
+- [x] Ensure npm commands (`npm install`, `npm publish`) work against npm registry
 - [ ] Ensure NuGet commands (`nuget push`, `nuget restore`) work against NuGet registry
+
+### npm Improvements
+
+- [ ] **Dist-tag Management Commands**: Implement support for `npm dist-tag add|rm|ls` commands
+- [ ] **Version-Specific Deletion**: Support for deleting specific versions instead of entire packages
+- [ ] **Deprecation Management**: Support for marking versions as deprecated with custom messages
+- [ ] **Caching Optimizations**: Implement efficient caching strategies for frequently accessed metadata
+- [ ] **Pagination for Large Packages**: Add support for paginated responses when packages have many versions
+
 
 ### API & Error Handling
 - [x] Improve error handling across all endpoints (✅ COMPLETE - Comprehensive error handling with proper HTTP codes)
@@ -132,8 +123,6 @@
 - [ ] Create user guides for each package format
 - [x] Add developer documentation for contributing (✅ COMPLETE - Copilot instructions and architecture docs)
 
-## ✅ DEPLOYMENT COMPLETED (May 2025)
-
 ### Infrastructure Deployment - COMPLETE ✅
 - [x] Docker Compose setup with PostgreSQL, Redis, API Gateway
 - [x] Multi-stage Dockerfile with security hardening
@@ -163,34 +152,8 @@
 - [x] Complete deployment documentation (DEPLOYMENT.md)
 
 ### Minor Issues Identified 🔧
-- [ ] API key creation returns 500 error (needs debugging)
+- [x] API key creation returns 500 error (needs debugging)
 - [ ] Client integration testing needed (npm publish, docker push, nuget push commands)
 - [ ] Package ownership validation needs completion
 - [ ] Performance testing for large uploads needed
 
----
-
-## 📊 PROJECT COMPLETION SUMMARY
-
-**OVERALL STATUS: 98% COMPLETE** 🎉
-
-### ✅ FULLY IMPLEMENTED (100%)
-- **All 9 Registry Formats**: npm, NuGet, Maven, Go, Helm, Cargo, RubyGems, OPA, OCI/Docker
-- **Package Validation**: Name/version format validation for all formats
-- **Metadata Extraction**: Basic metadata extraction working for all formats
-- **Upload/Download Workflows**: Complete with validation and error handling
-- **Database Integration**: Full GORM models, migrations, and service integration
-- **Authentication**: JWT, API keys, user management, authorization middleware
-- **Search & Analytics**: Full-text search, download tracking, popularity metrics
-- **Test Coverage**: Comprehensive test suites for all components
-- **Docker Deployment**: Complete containerization and deployment infrastructure
-
-### 🚧 MINOR REMAINING WORK (2%)
-- API key creation endpoint debugging (500 error)
-- Client integration testing (npm/docker/nuget command testing)
-- Package ownership validation
-- Performance testing
-- API documentation (OpenAPI/Swagger)
-- Cloud storage backends (S3, Azure, GCP)
-
-**The Lodestone artifact registry is production-ready with all core functionality implemented and tested!**

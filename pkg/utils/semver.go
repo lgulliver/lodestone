@@ -124,10 +124,11 @@ func SortSemver(versions []string) {
 
 // CompareVersions compares two version strings according to semver rules
 // Returns:
-//   -1 if v1 < v2
-//    0 if v1 == v2
-//    1 if v1 > v2
-//    2 if either version is invalid
+//
+//	-1 if v1 < v2
+//	 0 if v1 == v2
+//	 1 if v1 > v2
+//	 2 if either version is invalid
 func CompareVersions(v1, v2 string) int {
 	sv1, err := semver.NewVersion(v1)
 	if err != nil {
