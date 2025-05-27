@@ -50,12 +50,12 @@ test-quick: ## Run tests without coverage
 	@go test -v ./...
 
 # Database operations
-migrate-up: ## Run database migrations
+migrate-up: ## Run database migrations (standalone)
 	@echo "Running database migrations..."
 	@go run ./cmd/migrate -up
 	@echo "Migrations complete!"
 
-migrate-down: ## Roll back the last migration
+migrate-down: ## Roll back the last migration (standalone)
 	@echo "Rolling back last migration..."
 	@go run ./cmd/migrate -down
 	@echo "Rollback complete!"
@@ -65,6 +65,39 @@ migrate-build: ## Build migration tool
 	@mkdir -p $(BINARY_DIR)
 	@go build -o $(BINARY_DIR)/migrate ./cmd/migrate
 	@echo "Migration tool built!"
+
+# Deployment with migrations
+deploy-migrate-local: ## Deploy local environment with migrations
+	@echo "Deploying local environment with migrations..."
+	@./deploy/scripts/deploy.sh migrate-up local
+	@./deploy/scripts/deploy.sh up local
+
+deploy-migrate-dev: ## Deploy dev environment with migrations
+	@echo "Deploying dev environment with migrations..."
+	@./deploy/scripts/deploy.sh migrate-up dev
+	@./deploy/scripts/deploy.sh up dev
+
+deploy-migrate-prod: ## Deploy production environment with migrations
+	@echo "Deploying production environment with migrations..."
+	@./deploy/scripts/deploy.sh migrate-up prod
+	@./deploy/scripts/deploy.sh up prod
+
+# Migration commands for deployment environments
+migrate-dev-up: ## Run migrations in dev environment
+	@echo "Running migrations in dev environment..."
+	@./deploy/scripts/deploy.sh migrate-up dev
+
+migrate-dev-down: ## Roll back migrations in dev environment
+	@echo "Rolling back migrations in dev environment..."
+	@./deploy/scripts/deploy.sh migrate-down dev
+
+migrate-prod-up: ## Run migrations in production environment
+	@echo "Running migrations in production environment..."
+	@./deploy/scripts/deploy.sh migrate-up prod
+
+migrate-prod-down: ## Roll back migrations in production environment
+	@echo "Rolling back migrations in production environment..."
+	@./deploy/scripts/deploy.sh migrate-down prod
 
 # Format code
 fmt: ## Format code
@@ -97,6 +130,11 @@ run: build-api-gateway ## Run API gateway locally
 dev: ## Start development environment with Docker Compose
 	@echo "Starting development environment..."
 	@./deploy/scripts/deploy.sh up dev
+
+# Development with migrations
+dev-migrate: ## Start development environment with automatic migrations
+	@echo "Starting development environment with migrations..."
+	@./deploy/scripts/deploy.sh up dev --migrate
 
 # Stop development environment
 dev-down: ## Stop development environment

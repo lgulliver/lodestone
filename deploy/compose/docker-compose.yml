@@ -51,6 +51,32 @@ services:
     networks:
       - lodestone-network
 
+  # Database Migration Tool
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/configs/docker/Dockerfile.migrate
+    environment:
+      # Database config
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-lodestone}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-lodestone}
+      DB_NAME: ${POSTGRES_DB:-lodestone}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"  # Don't restart - run once
+    profiles:
+      - migration  # Only start when explicitly requested
+    networks:
+      - lodestone-network
+
   # Lodestone API Gateway
   api-gateway:
     build:

@@ -48,7 +48,7 @@ Lodestone Deployment Manager
 Usage: $0 <action> <environment> [services...]
 
 Actions:
-    up          Start services
+    up          Start services (with optional migration)
     down        Stop services  
     restart     Restart services
     logs        Show logs
@@ -57,6 +57,9 @@ Actions:
     pull        Pull latest images
     clean       Remove containers and volumes
     health      Check service health
+    migrate     Run database migrations
+    migrate-up  Run pending migrations
+    migrate-down Roll back last migration
 
 Environments:
     local       Local development (no external dependencies)
@@ -74,6 +77,9 @@ Examples:
     $0 up local                    # Start local development
     $0 up dev                      # Start development with MinIO
     $0 up prod                     # Start production deployment
+    $0 up local --migrate          # Start with automatic migrations
+    $0 migrate-up dev              # Run pending migrations only
+    $0 migrate-down prod           # Roll back last migration
     $0 restart prod api-gateway    # Restart only API gateway in prod
     $0 logs dev                    # Show all logs in dev
     $0 logs dev api-gateway        # Show API gateway logs in dev
@@ -124,12 +130,63 @@ get_compose_cmd() {
     esac
 }
 
+# Function to run database migrations
+run_migrations() {
+    local env="$1"
+    local compose_cmd="$2"
+    
+    print_info "Running database migrations..."
+    
+    # Ensure postgres is running and healthy
+    $compose_cmd up -d postgres
+    
+    # Wait for postgres to be ready
+    local max_attempts=30
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if $compose_cmd ps postgres | grep -q "healthy"; then
+            break
+        fi
+        
+        print_info "Waiting for database... (attempt $attempt/$max_attempts)"
+        sleep 2
+        ((attempt++))
+        
+        if [ $attempt -gt $max_attempts ]; then
+            print_error "Database failed to become ready"
+            return 1
+        fi
+    done
+    
+    # Run migrations
+    if $compose_cmd run --rm migrate -up; then
+        print_success "Database migrations completed successfully"
+        return 0
+    else
+        print_error "Database migrations failed"
+        return 1
+    fi
+}
+
 # Function to execute docker-compose commands
 execute_compose() {
     local env="$1"
     local action="$2"
     shift 2
     local services="$@"
+    local run_migrate=false
+    
+    # Check for --migrate flag in services
+    local filtered_services=""
+    for service in $services; do
+        if [ "$service" = "--migrate" ]; then
+            run_migrate=true
+        else
+            filtered_services="$filtered_services $service"
+        fi
+    done
+    services="$filtered_services"
     
     if ! check_env_file; then
         exit 1
@@ -143,6 +200,15 @@ execute_compose() {
     case "$action" in
         "up")
             print_info "Starting Lodestone ($env environment)..."
+            
+            # Run migrations if requested or if no specific services specified
+            if [ "$run_migrate" = true ] || [ -z "$services" ]; then
+                if ! run_migrations "$env" "$compose_cmd"; then
+                    print_error "Failed to run migrations, stopping deployment"
+                    exit 1
+                fi
+            fi
+            
             if [ "$env" = "prod" ]; then
                 $compose_cmd up -d $services
                 print_success "Production deployment started"
@@ -205,7 +271,55 @@ execute_compose() {
             ;;
         "health")
             print_info "Checking service health..."
-            $PROJECT_ROOT/scripts/health-check.sh
+            $DEPLOY_DIR/scripts/health-check.sh
+            ;;
+        "migrate"|"migrate-up")
+            print_info "Running database migrations..."
+            if run_migrations "$env" "$compose_cmd"; then
+                print_success "Migrations completed successfully"
+            else
+                print_error "Migration failed"
+                exit 1
+            fi
+            ;;
+        "migrate-down")
+            print_warning "Rolling back the last migration..."
+            print_warning "This will undo the most recent database changes!"
+            read -p "Are you sure you want to continue? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                # Ensure postgres is running
+                $compose_cmd up -d postgres
+                
+                # Wait for postgres to be ready
+                local max_attempts=30
+                local attempt=1
+                
+                while [ $attempt -le $max_attempts ]; do
+                    if $compose_cmd ps postgres | grep -q "healthy"; then
+                        break
+                    fi
+                    
+                    print_info "Waiting for database... (attempt $attempt/$max_attempts)"
+                    sleep 2
+                    ((attempt++))
+                    
+                    if [ $attempt -gt $max_attempts ]; then
+                        print_error "Database failed to become ready"
+                        exit 1
+                    fi
+                done
+                
+                # Run migration rollback
+                if $compose_cmd run --rm migrate -down; then
+                    print_success "Migration rollback completed successfully"
+                else
+                    print_error "Migration rollback failed"
+                    exit 1
+                fi
+            else
+                print_info "Migration rollback cancelled"
+            fi
             ;;
         *)
             print_error "Unknown action: $action"
