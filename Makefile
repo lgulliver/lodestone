@@ -96,12 +96,12 @@ run: build-api-gateway ## Run API gateway locally
 # Development setup with Docker Compose
 dev: ## Start development environment with Docker Compose
 	@echo "Starting development environment..."
-	@docker-compose -f deployments/docker-compose.dev.yml up --build
+	@./deploy/scripts/deploy.sh up dev
 
 # Stop development environment
 dev-down: ## Stop development environment
 	@echo "Stopping development environment..."
-	@docker-compose -f deployments/docker-compose.dev.yml down
+	@./deploy/scripts/deploy.sh down dev
 
 # Build Docker images
 docker: ## Build Docker images for all services
@@ -115,19 +115,19 @@ docker: ## Build Docker images for all services
 # Build Docker image for specific service
 docker-%: ## Build Docker image for specific service
 	@echo "Building Docker image for $*..."
-	@docker build -f deployments/docker/Dockerfile.$* -t $(DOCKER_REGISTRY)/$*:latest .
+	@docker build -f deploy/configs/docker/Dockerfile.$* -t $(DOCKER_REGISTRY)/$*:latest .
 	@echo "Docker build complete for $*!"
 
 # Deploy to Kubernetes
 deploy: ## Deploy to Kubernetes
 	@echo "Deploying to Kubernetes..."
-	@kubectl apply -f deployments/k8s/
+	@kubectl apply -f deploy/configs/k8s/
 	@echo "Deployment complete!"
 
 # Undeploy from Kubernetes
 undeploy: ## Remove from Kubernetes
 	@echo "Removing from Kubernetes..."
-	@kubectl delete -f deployments/k8s/
+	@kubectl delete -f deploy/configs/k8s/
 	@echo "Undeployment complete!"
 
 # Generate Swagger documentation
@@ -180,49 +180,30 @@ info: ## Show project information
 
 docker-build: ## Build Docker images
 	@echo "Building Docker images..."
-	@docker-compose build
+	@cd deploy/compose && docker-compose build
 
 docker-up: ## Start all services with Docker Compose
 	@echo "Starting Lodestone services..."
-	@docker-compose up -d
+	@./deploy/scripts/deploy.sh up dev
 
 docker-down: ## Stop all services
 	@echo "Stopping Lodestone services..."
-	@docker-compose down
+	@./deploy/scripts/deploy.sh down dev
 
 docker-logs: ## View logs from all services
-	@docker-compose logs -f
+	@./deploy/scripts/deploy.sh logs dev
 
 docker-clean: ## Clean up Docker resources
 	@echo "Cleaning up Docker resources..."
-	@docker-compose down -v --remove-orphans
-	@docker system prune -f
+	@./deploy/scripts/deploy.sh clean dev
 
 docker-dev: ## Start development environment
 	@echo "Starting development environment..."
-	@docker-compose -f deployments/docker-compose.dev.yml up -d
+	@./deploy/scripts/deploy.sh up dev
 
 docker-prod: ## Start production environment with Nginx
 	@echo "Starting production environment..."
-	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml --profile production up -d
-
-docker-prod-ssl: ## Start production with SSL support
-	@echo "Starting production with SSL..."
-	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml --profile production --profile ssl up -d
-
-# SSL Certificate Management
-ssl-init: ## Initialize SSL certificates with Let's Encrypt
-	@echo "Initializing SSL certificates..."
-	@mkdir -p ssl/certs ssl/private
-	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml run --rm certbot \
-		certonly --webroot --webroot-path=/var/www/certbot \
-		--email ${CERTBOT_EMAIL} --agree-tos --no-eff-email \
-		-d ${DOMAIN_NAME}
-
-ssl-renew: ## Renew SSL certificates
-	@echo "Renewing SSL certificates..."
-	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml exec certbot \
-		certbot renew --webroot --webroot-path=/var/www/certbot
+	@./deploy/scripts/deploy.sh up prod
 
 # Backup and Restore
 backup: ## Create backup of data volumes
@@ -235,15 +216,15 @@ backup: ## Create backup of data volumes
 # Deployment helpers
 deploy-check: ## Check if deployment is ready
 	@echo "Checking deployment health..."
-	@./scripts/health-check.sh
+	@./deploy/scripts/health-check.sh
 
 deploy-status: ## Show status of all services
-	@docker-compose ps
+	@./deploy/scripts/deploy.sh ps dev
 
 # Environment setup
 env-setup: ## Copy environment template
 	@echo "Setting up environment file..."
-	@cp .env.example .env
+	@./deploy/scripts/setup.sh dev
 	@echo "Please edit .env file with your configuration"
 
 # Security

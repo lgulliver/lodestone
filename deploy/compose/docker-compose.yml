@@ -1,3 +1,7 @@
+# Lodestone Artifact Registry - Base Docker Compose Configuration
+# This is the base configuration that defines all services
+# Use with environment-specific override files
+
 services:
   # PostgreSQL Database
   postgres:
@@ -9,7 +13,7 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=md5"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ../configs/init-scripts:/docker-entrypoint-initdb.d
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     restart: unless-stopped
@@ -50,8 +54,8 @@ services:
   # Lodestone API Gateway
   api-gateway:
     build:
-      context: .
-      dockerfile: deployments/docker/Dockerfile.api-gateway
+      context: ../..
+      dockerfile: deploy/configs/docker/Dockerfile.api-gateway
     environment:
       # Server config
       SERVER_HOST: 0.0.0.0
@@ -120,32 +124,12 @@ services:
     networks:
       - lodestone-network
 
-  # Nginx reverse proxy (optional, for production)
-  nginx:
-    image: nginx:alpine
-    volumes:
-      - ./deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./deployments/nginx/conf.d:/etc/nginx/conf.d:ro
-      - nginx_logs:/var/log/nginx
-    ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-    depends_on:
-      - api-gateway
-    restart: unless-stopped
-    networks:
-      - lodestone-network
-    profiles:
-      - production
-
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
   artifacts_data:
-    driver: local
-  nginx_logs:
     driver: local
 
 networks:

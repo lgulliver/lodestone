@@ -26,6 +26,21 @@ Lodestone follows a microservices architecture with the following components:
 
 ## Quick Start
 
+### Using Deployment Scripts (Recommended)
+
+```bash
+# First-time setup for local development
+./deploy/scripts/setup.sh local
+
+# Start the deployment
+./deploy/scripts/deploy.sh up local
+
+# Check health
+./deploy/scripts/health-check.sh
+```
+
+### Using Make Commands
+
 ```bash
 # Build all services
 make build
@@ -36,6 +51,8 @@ make dev
 # Deploy to Kubernetes
 make deploy
 ```
+
+For detailed deployment options, see [deploy/README.md](deploy/README.md).
 
 ## Development
 

@@ -1,7 +1,5 @@
-# Production Docker Compose Override with SSL Support
+# Production Environment Override with SSL Support
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-version: '3.8'
 
 services:
   # Production database with optimized settings
@@ -21,6 +19,7 @@ services:
       -c default_statistics_target=100
       -c random_page_cost=1.1
       -c effective_io_concurrency=200
+    ports: []  # Don't expose database in production
     deploy:
       resources:
         limits:
@@ -41,6 +40,7 @@ services:
       --maxmemory-policy allkeys-lru
       --tcp-keepalive 300
       --timeout 0
+    ports: []  # Don't expose Redis in production
     deploy:
       resources:
         limits:
@@ -87,13 +87,22 @@ services:
 
   # Production Nginx with SSL support
   nginx:
+    image: nginx:alpine
     volumes:
-      - ./deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./deployments/nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./ssl/certs:/etc/ssl/certs:ro
-      - ./ssl/private:/etc/ssl/private:ro
+      - ../configs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../configs/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ../../ssl/certs:/etc/ssl/certs:ro
+      - ../../ssl/private:/etc/ssl/private:ro
       - certbot_webroot:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+    networks:
+      - lodestone-network
     environment:
       - NGINX_WORKER_PROCESSES=auto
       - NGINX_WORKER_CONNECTIONS=1024
@@ -110,8 +119,8 @@ services:
   certbot:
     image: certbot/certbot:latest
     volumes:
-      - ./ssl/certs:/etc/letsencrypt
-      - ./ssl/private:/etc/letsencrypt/live
+      - ../../ssl/certs:/etc/letsencrypt
+      - ../../ssl/private:/etc/letsencrypt/live
       - certbot_webroot:/var/www/certbot
     environment:
       - CERTBOT_EMAIL=${CERTBOT_EMAIL}
@@ -131,7 +140,7 @@ services:
     image: alpine:3.19
     volumes:
       - nginx_logs:/var/log/nginx
-      - ./deployments/logrotate/nginx:/etc/logrotate.d/nginx:ro
+      - ../configs/logrotate/nginx:/etc/logrotate.d/nginx:ro
     command: >
       sh -c "
         while true; do
@@ -143,6 +152,8 @@ services:
       - logging
 
 volumes:
+  nginx_logs:
+    driver: local
   certbot_webroot:
     driver: local
 

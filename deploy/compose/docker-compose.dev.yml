@@ -1,0 +1,57 @@
+# Development Environment Override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5432:5432"  # Expose for development access
+
+  redis:
+    environment:
+      REDIS_PASSWORD: ""  # No password for dev
+    command: redis-server
+    ports:
+      - "6379:6379"  # Expose for development access
+
+  # MinIO (S3-compatible storage for development)
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - lodestone-network
+
+  api-gateway:
+    environment:
+      # Development overrides
+      LOG_LEVEL: debug
+      LOG_FORMAT: text
+      JWT_SECRET: dev-secret-key-change-in-production
+      CORS_ORIGINS: "*"
+      DB_SSLMODE: disable
+      
+      # Storage config (using local for dev)
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/artifacts
+      
+      # Development features
+      RATE_LIMIT_RPS: 1000  # Higher limit for dev
+
+volumes:
+  minio_data:
+    driver: local
