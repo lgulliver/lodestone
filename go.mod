@@ -17,7 +17,7 @@ require (
 	golang.org/x/crypto v0.23.0
 )
 
-require github.com/Masterminds/semver/v3 v3.3.1 // indirect
+require github.com/Masterminds/semver/v3 v3.3.1
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect
