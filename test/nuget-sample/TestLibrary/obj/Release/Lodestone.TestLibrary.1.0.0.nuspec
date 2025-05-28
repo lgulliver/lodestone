@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>Lodestone.TestLibrary</id>
+    <version>1.0.0</version>
+    <authors>Lodestone Test</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <description>A test library for validating Lodestone NuGet registry functionality</description>
+    <tags>test lodestone nuget</tags>
+    <repository type="git" url="https://github.com/lodestone/test-library" commit="3523ad60ba11f64bc18359dc95798b19b652a0c6" />
+    <dependencies>
+      <group targetFramework="net6.0" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="/Users/Liam.Gulliver/Repos/lodestone/test/nuget-sample/TestLibrary/bin/Release/net6.0/TestLibrary.dll" target="lib/net6.0/TestLibrary.dll" />
+  </files>
+</package>

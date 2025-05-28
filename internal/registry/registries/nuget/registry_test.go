@@ -1,9 +1,12 @@
 package nuget
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -332,4 +335,324 @@ func TestDelete_Deprecated(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "use service.Delete instead")
+}
+
+// Symbol package test data
+var mockSymbolPackageContent = []byte{
+	0x50, 0x4b, 0x03, 0x04, // ZIP header
+	// Mock ZIP content containing .pdb files
+}
+
+func TestIsSymbolPackage(t *testing.T) {
+	registry, _, _ := setupTestRegistry(t)
+
+	tests := []struct {
+		name     string
+		artifact *types.Artifact
+		expected bool
+	}{
+		{
+			name: "Symbol package with metadata",
+			artifact: &types.Artifact{
+				Name:     "TestPackage",
+				Version:  "1.0.0",
+				Registry: "nuget",
+				Metadata: types.JSONMap{
+					"packageType": "SymbolsPackage",
+					"isSymbols":   true,
+				},
+				ContentType: "application/vnd.nuget.symbolpackage",
+			},
+			expected: true,
+		},
+		{
+			name: "Symbol package with content type",
+			artifact: &types.Artifact{
+				Name:        "TestPackage",
+				Version:     "1.0.0",
+				Registry:    "nuget",
+				ContentType: "application/vnd.nuget.symbolpackage",
+			},
+			expected: true,
+		},
+		{
+			name: "Regular package",
+			artifact: &types.Artifact{
+				Name:        "TestPackage",
+				Version:     "1.0.0",
+				Registry:    "nuget",
+				ContentType: "application/zip",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := registry.IsSymbolPackage(tt.artifact)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGenerateSymbolStoragePath(t *testing.T) {
+	registry, _, _ := setupTestRegistry(t)
+
+	tests := []struct {
+		name     string
+		pkgName  string
+		version  string
+		expected string
+	}{
+		{
+			name:     "Simple package",
+			pkgName:  "TestPackage",
+			version:  "1.0.0",
+			expected: "nuget/symbols/testpackage/1.0.0/testpackage.1.0.0.snupkg",
+		},
+		{
+			name:     "Complex package name",
+			pkgName:  "Company.Product.Core",
+			version:  "2.1.3-beta1",
+			expected: "nuget/symbols/company.product.core/2.1.3-beta1/company.product.core.2.1.3-beta1.snupkg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := registry.GenerateSymbolStoragePath(tt.pkgName, tt.version)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestValidateSymbolPackage(t *testing.T) {
+	registry, _, _ := setupTestRegistry(t)
+
+	tests := []struct {
+		name        string
+		content     []byte
+		expectError bool
+	}{
+		{
+			name:        "Valid symbol package with PDB",
+			content:     createMockSymbolPackage(t, []string{"TestLib.pdb", "TestLib.dll"}),
+			expectError: false,
+		},
+		{
+			name:        "Valid symbol package with MDB",
+			content:     createMockSymbolPackage(t, []string{"TestLib.dll.mdb", "TestLib.dll"}),
+			expectError: false,
+		},
+		{
+			name:        "Invalid - no symbol files",
+			content:     createMockSymbolPackage(t, []string{"TestLib.dll", "readme.txt"}),
+			expectError: true,
+		},
+		{
+			name:        "Empty package",
+			content:     []byte{},
+			expectError: true,
+		},
+		{
+			name:        "Invalid ZIP",
+			content:     []byte("not a zip file"),
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := registry.validateSymbolPackage(tt.content, "TestPackage", "1.0.0")
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestGetSymbolMetadata(t *testing.T) {
+	registry, _, _ := setupTestRegistry(t)
+
+	symbolFiles := []string{"TestLib.pdb", "TestLib2.pdb", "TestLib.dll"}
+	content := createMockSymbolPackage(t, symbolFiles)
+
+	metadata, err := registry.GetSymbolMetadata(content)
+	assert.NoError(t, err)
+	assert.NotNil(t, metadata)
+
+	// Check expected metadata fields
+	assert.Equal(t, "SymbolsPackage", metadata["packageType"])
+	assert.Equal(t, true, metadata["isSymbols"])
+	assert.Equal(t, "application/vnd.nuget.symbolpackage", metadata["contentType"])
+
+	// Check symbol files inventory
+	symbolFilesInterface, exists := metadata["symbolFiles"]
+	assert.True(t, exists)
+	symbolFilesList, ok := symbolFilesInterface.([]string)
+	assert.True(t, ok)
+	assert.Contains(t, symbolFilesList, "TestLib.pdb")
+	assert.Contains(t, symbolFilesList, "TestLib2.pdb")
+	assert.NotContains(t, symbolFilesList, "TestLib.dll") // DLL is not a symbol file
+}
+
+func TestIsSymbolPackageContent(t *testing.T) {
+	registry, _, _ := setupTestRegistry(t)
+
+	tests := []struct {
+		name     string
+		content  []byte
+		expected bool
+	}{
+		{
+			name:     "Valid symbol package",
+			content:  createMockSymbolPackage(t, []string{"TestLib.pdb", "TestLib.dll"}),
+			expected: true,
+		},
+		{
+			name:     "Package without symbols",
+			content:  createMockSymbolPackage(t, []string{"TestLib.dll", "readme.txt"}),
+			expected: false,
+		},
+		{
+			name:     "Empty content",
+			content:  []byte{},
+			expected: false,
+		},
+		{
+			name:     "Invalid ZIP",
+			content:  []byte("not a zip"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := registry.isSymbolPackageContent(tt.content)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestValidateWithSymbolPackage(t *testing.T) {
+	registry, _, _ := setupTestRegistry(t)
+
+	// Test with symbol package
+	symbolContent := createMockSymbolPackage(t, []string{"TestLib.pdb", "TestLib.dll"})
+	symbolArtifact := &types.Artifact{
+		Name:        "TestPackage",
+		Version:     "1.0.0",
+		Registry:    "nuget",
+		ContentType: "application/vnd.nuget.symbolpackage",
+	}
+
+	err := registry.Validate(symbolArtifact, symbolContent)
+	assert.NoError(t, err)
+
+	// Test with regular package
+	regularContent := createMockNuGetPackage(t, "TestPackage", "1.0.0")
+	regularArtifact := &types.Artifact{
+		Name:        "TestPackage",
+		Version:     "1.0.0",
+		Registry:    "nuget",
+		ContentType: "application/zip",
+	}
+
+	err = registry.Validate(regularArtifact, regularContent)
+	assert.NoError(t, err)
+}
+
+func TestGetMetadataWithSymbolPackage(t *testing.T) {
+	registry, _, _ := setupTestRegistry(t)
+
+	// Test with symbol package
+	symbolContent := createMockSymbolPackage(t, []string{"TestLib.pdb", "TestLib2.pdb"})
+	metadata, err := registry.GetMetadata(symbolContent)
+	assert.NoError(t, err)
+	assert.NotNil(t, metadata)
+
+	// Verify symbol package metadata
+	assert.Equal(t, "SymbolsPackage", metadata["packageType"])
+	assert.Equal(t, true, metadata["isSymbols"])
+	assert.Equal(t, "application/vnd.nuget.symbolpackage", metadata["contentType"])
+
+	symbolFilesInterface, exists := metadata["symbolFiles"]
+	assert.True(t, exists)
+	symbolFilesList, ok := symbolFilesInterface.([]string)
+	assert.True(t, ok)
+	assert.Len(t, symbolFilesList, 2)
+	assert.Contains(t, symbolFilesList, "TestLib.pdb")
+	assert.Contains(t, symbolFilesList, "TestLib2.pdb")
+
+	// Test with regular package
+	regularContent := createMockNuGetPackage(t, "TestPackage", "1.0.0")
+	metadata, err = registry.GetMetadata(regularContent)
+	assert.NoError(t, err)
+	assert.NotNil(t, metadata)
+
+	// Verify regular package metadata
+	assert.Equal(t, "TestPackage", metadata["id"])
+	assert.Equal(t, "1.0.0", metadata["version"])
+	assert.NotEqual(t, "SymbolsPackage", metadata["packageType"])
+}
+
+// Helper functions for testing
+
+func createMockSymbolPackage(t *testing.T, files []string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+
+	for _, filename := range files {
+		file, err := w.Create(filename)
+		assert.NoError(t, err)
+
+		// Write some mock content
+		if strings.HasSuffix(filename, ".pdb") || strings.HasSuffix(filename, ".mdb") {
+			file.Write([]byte("mock symbol data for " + filename))
+		} else {
+			file.Write([]byte("mock content for " + filename))
+		}
+	}
+
+	err := w.Close()
+	assert.NoError(t, err)
+
+	return buf.Bytes()
+}
+
+func createMockNuGetPackage(t *testing.T, name, version string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+
+	// Create a mock .nuspec file
+	nuspecContent := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>%s</id>
+    <version>%s</version>
+    <title>%s</title>
+    <authors>Test Author</authors>
+    <description>Test package description</description>
+  </metadata>
+</package>`, name, version, name)
+
+	nuspecFile, err := w.Create(name + ".nuspec")
+	assert.NoError(t, err)
+	nuspecFile.Write([]byte(nuspecContent))
+
+	// Create some mock content files
+	dllFile, err := w.Create("lib/net48/" + name + ".dll")
+	assert.NoError(t, err)
+	dllFile.Write([]byte("mock dll content"))
+
+	err = w.Close()
+	assert.NoError(t, err)
+
+	return buf.Bytes()
 }

@@ -1,10 +1,12 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -19,23 +21,84 @@ import (
 func NuGetRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	nuget := api.Group("/nuget")
 
+	// NuGet v3 Service Index (root metadata endpoint)
+	nuget.GET("/v3/index.json", handleNuGetServiceIndex())
+
 	// NuGet v3 API routes
-	// Service index (metadata endpoint)
-	nuget.GET("/v3-flatcontainer/:id/index.json", handleNuGetServiceIndex(registryService))
+	// Package content (flat container)
+	nuget.GET("/v3-flatcontainer/:id/index.json", handleNuGetPackageVersions(registryService))
 	nuget.GET("/v3-flatcontainer/:id/:version/:filename", middleware.OptionalAuthMiddleware(authService), handleNuGetDownload(registryService))
 
 	// Package publish (requires authentication)
 	nuget.PUT("/api/v2/package", middleware.AuthMiddleware(authService), handleNuGetUpload(registryService))
 	nuget.DELETE("/api/v2/package/:id/:version", middleware.AuthMiddleware(authService), handleNuGetDelete(registryService))
 
+	// Symbol package endpoints (requires authentication)
+	nuget.PUT("/api/v2/symbolpackage", middleware.AuthMiddleware(authService), handleNuGetSymbolUpload(registryService))
+	nuget.GET("/symbols/:id/:version/:filename", middleware.OptionalAuthMiddleware(authService), handleNuGetSymbolDownload(registryService))
+
 	// Search API
 	nuget.GET("/v3/search", handleNuGetSearch(registryService))
 
-	// Package metadata
+	// Package registration (metadata)
 	nuget.GET("/v3/registration/:id/index.json", handleNuGetPackageMetadata(registryService))
 }
 
-func handleNuGetServiceIndex(registryService *registry.Service) gin.HandlerFunc {
+func handleNuGetServiceIndex() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// NuGet v3 Service Index response
+		// This tells NuGet clients where to find various services
+		baseURL := fmt.Sprintf("%s://%s/api/v1/nuget",
+			c.Request.Header.Get("X-Forwarded-Proto"), c.Request.Host)
+		if baseURL[:4] != "http" {
+			if c.Request.TLS != nil {
+				baseURL = "https://" + c.Request.Host + "/api/v1/nuget"
+			} else {
+				baseURL = "http://" + c.Request.Host + "/api/v1/nuget"
+			}
+		}
+
+		serviceIndex := gin.H{
+			"version": "3.0.0",
+			"resources": []gin.H{
+				{
+					"@id":     baseURL + "/v3-flatcontainer/",
+					"@type":   "PackageBaseAddress/3.0.0",
+					"comment": "Base URL of where NuGet packages are stored, in the format https://api.nuget.org/v3-flatcontainer/{id-lower}/{version-lower}/{id-lower}.{version-lower}.nupkg",
+				},
+				{
+					"@id":     baseURL + "/v3/search",
+					"@type":   "SearchQueryService",
+					"comment": "Query endpoint of NuGet Search service (primary)",
+				},
+				{
+					"@id":     baseURL + "/v3/registration/",
+					"@type":   "RegistrationsBaseUrl",
+					"comment": "Base URL of NuGet package registration service (primary)",
+				},
+				{
+					"@id":     baseURL + "/api/v2/package",
+					"@type":   "PackagePublish/2.0.0",
+					"comment": "NuGet package publish endpoint",
+				},
+				{
+					"@id":     baseURL + "/api/v2/symbolpackage",
+					"@type":   "SymbolPackagePublish/4.9.0",
+					"comment": "NuGet symbol package publish endpoint",
+				},
+				{
+					"@id":     baseURL + "/symbols/",
+					"@type":   "SymbolPackageBaseAddress/4.9.0",
+					"comment": "Base URL of NuGet symbol server",
+				},
+			},
+		}
+
+		c.JSON(http.StatusOK, serviceIndex)
+	}
+}
+
+func handleNuGetPackageVersions(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		packageID := c.Param("id")
 		if packageID == "" {
@@ -305,4 +368,159 @@ func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFu
 			},
 		})
 	}
+}
+
+// handleNuGetSymbolUpload handles symbol package uploads (.snupkg files)
+func handleNuGetSymbolUpload(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := middleware.GetUserFromContext(c)
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		// Get the uploaded file
+		file, err := c.FormFile("package")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no package file provided"})
+			return
+		}
+
+		// Open the file
+		src, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open uploaded file"})
+			return
+		}
+		defer src.Close()
+
+		// Read the content
+		content, err := io.ReadAll(src)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read uploaded file"})
+			return
+		}
+
+		// Parse the filename to extract package name and version
+		// Expected format: packagename.version.snupkg
+		filename := file.Filename
+		if !strings.HasSuffix(strings.ToLower(filename), ".snupkg") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "symbol package must have .snupkg extension"})
+			return
+		}
+
+		// Remove .snupkg extension and parse name.version
+		nameVersion := strings.TrimSuffix(filename, ".snupkg")
+		parts := strings.Split(nameVersion, ".")
+		if len(parts) < 4 { // name.major.minor.patch at minimum
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid symbol package filename format"})
+			return
+		}
+
+		// Find the last occurrence that looks like a version (contains digits)
+		var packageName, version string
+		for i := len(parts) - 3; i >= 0; i-- {
+			if len(parts) > i+2 {
+				candidateVersion := strings.Join(parts[i:], ".")
+				// Check if this looks like a version
+				if isValidVersion(candidateVersion) {
+					packageName = strings.Join(parts[:i], ".")
+					version = candidateVersion
+					break
+				}
+			}
+		}
+
+		if packageName == "" || version == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse package name and version from filename"})
+			return
+		}
+
+		// Upload the symbol package directly
+		result, err := registryService.Upload(c.Request.Context(), "nuget", packageName, version, bytes.NewReader(content), user.ID)
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				c.JSON(http.StatusConflict, gin.H{"error": "symbol package already exists"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"message":     "Symbol package uploaded successfully",
+			"packageName": result.Name,
+			"version":     result.Version,
+			"id":          result.ID,
+		})
+	}
+}
+
+// handleNuGetSymbolDownload handles symbol package downloads
+func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		packageName := c.Param("id")
+		version := c.Param("version")
+		filename := c.Param("filename")
+
+		// Validate that this is a symbol package request
+		if !strings.HasSuffix(strings.ToLower(filename), ".snupkg") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "not a symbol package file"})
+			return
+		}
+
+		// Find the symbol package artifact
+		filter := &types.ArtifactFilter{
+			Name:     packageName,
+			Registry: "nuget",
+		}
+
+		artifacts, _, err := registryService.List(c.Request.Context(), filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to search for symbol package"})
+			return
+		}
+
+		// Look for the symbol package specifically
+		var symbolArtifact *types.Artifact
+		for _, artifact := range artifacts {
+			if artifact.Metadata != nil {
+				if packageType, exists := artifact.Metadata["packageType"]; exists && packageType == "SymbolsPackage" {
+					symbolArtifact = artifact
+					break
+				}
+			}
+		}
+
+		if symbolArtifact == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "symbol package not found"})
+			return
+		}
+
+		// Download the symbol package
+		_, content, err := registryService.Download(c.Request.Context(), "nuget", packageName, version)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "symbol package not found"})
+			return
+		}
+		defer content.Close()
+
+		// Set appropriate headers for symbol package download
+		c.Header("Content-Type", "application/vnd.nuget.symbolpackage")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+		// Stream the content
+		_, err = io.Copy(c.Writer, content)
+		if err != nil {
+			// Log error but don't send JSON response as headers are already sent
+			c.AbortWithStatus(http.StatusInternalServerError)
+		}
+	}
+}
+
+// isValidVersion checks if a string looks like a semantic version
+func isValidVersion(version string) bool {
+	// Simple check for version pattern: digits, dots, and optional pre-release/build metadata
+	versionRegex := regexp.MustCompile(`^\d+\.\d+\.\d+`)
+	return versionRegex.MatchString(version)
 }

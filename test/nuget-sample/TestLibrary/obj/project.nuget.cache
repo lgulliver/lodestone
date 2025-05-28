@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "9MfxHMvRd1k=",
+  "success": true,
+  "projectFilePath": "/Users/Liam.Gulliver/Repos/lodestone/test/nuget-sample/TestLibrary/TestLibrary.csproj",
+  "expectedPackageFiles": [
+    "/Users/Liam.Gulliver/.nuget/packages/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg.sha512",
+    "/Users/Liam.Gulliver/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.36/microsoft.aspnetcore.app.ref.6.0.36.nupkg.sha512"
+  ],
+  "logs": []
+}
