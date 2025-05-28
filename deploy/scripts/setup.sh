@@ -80,6 +80,62 @@ check_prerequisites() {
     return $missing
 }
 
+# Function to create default local environment file
+create_local_env() {
+    local env_file="$1"
+    
+    print_info "Creating default local environment file..."
+    
+    cat > "$env_file" << 'EOF'
+# Lodestone Local Development Environment
+# This file is auto-generated for local development
+
+# Application
+ENVIRONMENT=local
+LOG_LEVEL=debug
+API_PORT=8080
+CORS_ORIGINS=http://localhost:3000,http://localhost:8080
+
+# Database
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=lodestone
+POSTGRES_USER=lodestone
+POSTGRES_PASSWORD=lodestone
+DATABASE_URL=postgres://lodestone:lodestone@localhost:5432/lodestone?sslmode=disable
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+
+# Storage (Local filesystem for development)
+STORAGE_TYPE=local
+LOCAL_STORAGE_PATH=./data/artifacts
+
+# Authentication
+JWT_SECRET=local-development-secret-key-not-for-production-use-only
+JWT_EXPIRY=24h
+API_KEY_PREFIX=lk_
+
+# Metrics and Monitoring
+METRICS_ENABLED=true
+HEALTH_CHECK_ENABLED=true
+
+# File Upload Limits
+MAX_UPLOAD_SIZE=100MB
+TEMP_DIR=/tmp/lodestone
+
+# Development Features
+DEBUG_MODE=true
+ENABLE_SWAGGER=true
+ENABLE_PROFILING=true
+EOF
+    
+    print_success "Created local environment file with development defaults"
+}
+
 # Function to setup environment
 setup_environment() {
     local env="$1"
@@ -90,8 +146,13 @@ setup_environment() {
     # Copy appropriate environment template
     case "$env" in
         "local")
-            cp "$ENV_DIR/.env.local" "$env_file"
-            print_success "Copied local environment configuration"
+            # Check if template exists, otherwise create default
+            if [ -f "$ENV_DIR/.env.local" ]; then
+                cp "$ENV_DIR/.env.local" "$env_file"
+                print_success "Copied local environment configuration from template"
+            else
+                create_local_env "$env_file"
+            fi
             ;;
         "dev")
             cp "$ENV_DIR/.env.dev" "$env_file"

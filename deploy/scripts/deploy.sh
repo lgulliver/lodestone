@@ -111,7 +111,7 @@ check_env_file() {
 # Function to get docker-compose command based on environment
 get_compose_cmd() {
     local env="$1"
-    local base_cmd="docker-compose -f $COMPOSE_DIR/docker-compose.yml"
+    local base_cmd="docker-compose -p lodestone -f $COMPOSE_DIR/docker-compose.yml"
     
     case "$env" in
         "local")
