@@ -49,7 +49,7 @@ func extractNuGetPackageInfo(fileContent []byte) (string, string, error) {
 	for _, file := range zipReader.File {
 		if strings.HasSuffix(file.Name, ".nuspec") {
 			log.Info().Str("nuspec_file", file.Name).Msg("Found .nuspec file in package")
-			
+
 			rc, err := file.Open()
 			if err != nil {
 				return "", "", fmt.Errorf("failed to open nuspec file: %w", err)
@@ -305,7 +305,7 @@ func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 		// Validate file extension
 		filename := header.Filename
 		log.Info().Str("filename", filename).Msg("Processing NuGet package filename")
-		
+
 		if !strings.HasSuffix(filename, ".nupkg") {
 			log.Error().Str("filename", filename).Msg("Invalid package file extension")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid package file extension"})
@@ -493,11 +493,11 @@ func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFu
 			catalogEntries = append(catalogEntries, gin.H{
 				"@id": fmt.Sprintf("%s/v3/registration/%s/%s.json",
 					baseURL, strings.ToLower(packageID), artifact.Version),
-				"@type":        "Package",
-				"commitId":     "00000000-0000-0000-0000-000000000000",
+				"@type":           "Package",
+				"commitId":        "00000000-0000-0000-0000-000000000000",
 				"commitTimeStamp": artifact.CreatedAt,
 				"catalogEntry": gin.H{
-					"@id":         fmt.Sprintf("%s/v3/registration/%s/%s.json", 
+					"@id": fmt.Sprintf("%s/v3/registration/%s/%s.json",
 						baseURL, strings.ToLower(packageID), artifact.Version),
 					"@type":       "PackageDetails",
 					"authors":     authors,
@@ -524,13 +524,13 @@ func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFu
 			"count": 1,
 			"items": []gin.H{
 				{
-					"@id":    fmt.Sprintf("%s/v3/registration/%s/index.json#page/1.0.0/%s",
+					"@id": fmt.Sprintf("%s/v3/registration/%s/index.json#page/1.0.0/%s",
 						baseURL, strings.ToLower(packageID), artifacts[len(artifacts)-1].Version),
-					"@type":  "catalog:CatalogPage",
-					"count":  len(catalogEntries),
-					"items":  catalogEntries,
-					"lower":  artifacts[0].Version,
-					"upper":  artifacts[len(artifacts)-1].Version,
+					"@type": "catalog:CatalogPage",
+					"count": len(catalogEntries),
+					"items": catalogEntries,
+					"lower": artifacts[0].Version,
+					"upper": artifacts[len(artifacts)-1].Version,
 					"parent": fmt.Sprintf("%s/v3/registration/%s/index.json",
 						baseURL, strings.ToLower(packageID)),
 				},

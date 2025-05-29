@@ -105,7 +105,7 @@ func ComputeSHA1FromReader(reader io.Reader) (string, error) {
 // SanitizePackageName sanitizes a package name for safe storage
 // Behavior varies by registry type:
 // - npm: lowercase (case insensitive)
-// - nuget: preserve case (case sensitive)  
+// - nuget: preserve case (case sensitive)
 // - maven: preserve case (case sensitive)
 // - other: lowercase by default
 func SanitizePackageName(name, registryType string) string {

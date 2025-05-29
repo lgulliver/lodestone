@@ -6,24 +6,24 @@ import (
 
 func TestHashPassword(t *testing.T) {
 	password := "testpassword"
-	
+
 	hash, err := HashPassword(password, 10)
 	if err != nil {
 		t.Errorf("HashPassword() error = %v", err)
 		return
 	}
-	
+
 	if len(hash) == 0 {
 		t.Error("HashPassword() returned empty hash")
 	}
-	
+
 	// Test that the same password produces different hashes (salt)
 	hash2, err := HashPassword(password, 10)
 	if err != nil {
 		t.Errorf("HashPassword() error = %v", err)
 		return
 	}
-	
+
 	if hash == hash2 {
 		t.Error("HashPassword() should produce different hashes due to salt")
 	}
@@ -32,12 +32,12 @@ func TestHashPassword(t *testing.T) {
 func TestCheckPassword(t *testing.T) {
 	password := "testpassword"
 	wrongPassword := "wrongpassword"
-	
+
 	hash, err := HashPassword(password, 10)
 	if err != nil {
 		t.Fatalf("HashPassword() error = %v", err)
 	}
-	
+
 	tests := []struct {
 		name     string
 		password string
@@ -63,7 +63,7 @@ func TestCheckPassword(t *testing.T) {
 			want:     false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := CheckPassword(tt.password, tt.hash); got != tt.want {
@@ -141,7 +141,7 @@ func TestSanitizePackageName(t *testing.T) {
 			want:         "mypackage",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := SanitizePackageName(tt.input, tt.registryType); got != tt.want {
@@ -178,7 +178,7 @@ func TestValidateVersion(t *testing.T) {
 			want:    true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := ValidateVersion(tt.version); got != tt.want {
@@ -220,7 +220,7 @@ func TestIsValidRegistryType(t *testing.T) {
 			want:         false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := IsValidRegistryType(tt.registryType); got != tt.want {
@@ -257,7 +257,7 @@ func TestFormatBytes(t *testing.T) {
 			want:  "0 B",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := FormatBytes(tt.bytes); got != tt.want {
