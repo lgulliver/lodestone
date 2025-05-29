@@ -183,7 +183,7 @@ func (s *Service) List(ctx context.Context, filter *types.ArtifactFilter) ([]*ty
 
 	// Apply filters
 	if filter.Name != "" {
-		query = query.Where("name ILIKE ?", "%"+filter.Name+"%")
+		query = query.Where("LOWER(name) LIKE LOWER(?)", "%"+filter.Name+"%")
 	}
 	if filter.Registry != "" {
 		query = query.Where("registry = ?", filter.Registry)

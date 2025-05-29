@@ -18,10 +18,10 @@ import (
 func CargoRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	cargo := api.Group("/cargo")
 
-	// Cargo registry API
-	cargo.GET("/api/v1/crates", handleCargoSearch(registryService))
-	cargo.GET("/api/v1/crates/:crate", handleCargoInfo(registryService))
-	cargo.GET("/api/v1/crates/:crate/:version/download", handleCargoDownload(registryService))
+	// Cargo registry API - requires authentication
+	cargo.GET("/api/v1/crates", middleware.AuthMiddleware(authService), handleCargoSearch(registryService))
+	cargo.GET("/api/v1/crates/:crate", middleware.AuthMiddleware(authService), handleCargoInfo(registryService))
+	cargo.GET("/api/v1/crates/:crate/:version/download", middleware.AuthMiddleware(authService), handleCargoDownload(registryService))
 
 	// Crate publish (requires authentication)
 	cargo.PUT("/api/v1/crates/new", middleware.AuthMiddleware(authService), handleCargoPublish(registryService))

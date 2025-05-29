@@ -40,15 +40,15 @@ func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authServ
 
 	// Note: Base endpoint (/v2/) is handled by OCIRootRoutes catch-all handler
 
-	// Image manifest operations
-	oci.GET("/:name/manifests/:reference", middleware.OptionalAuthMiddleware(authService), handleOCIManifestGet(registryService))
+	// Image manifest operations - requires authentication
+	oci.GET("/:name/manifests/:reference", middleware.AuthMiddleware(authService), handleOCIManifestGet(registryService))
 	oci.PUT("/:name/manifests/:reference", middleware.AuthMiddleware(authService), handleOCIManifestPut(registryService))
 	oci.DELETE("/:name/manifests/:reference", middleware.AuthMiddleware(authService), handleOCIManifestDelete(registryService))
-	oci.HEAD("/:name/manifests/:reference", middleware.OptionalAuthMiddleware(authService), handleOCIManifestHead(registryService))
+	oci.HEAD("/:name/manifests/:reference", middleware.AuthMiddleware(authService), handleOCIManifestHead(registryService))
 
-	// Blob operations
-	oci.GET("/:name/blobs/:digest", middleware.OptionalAuthMiddleware(authService), handleOCIBlobGet(registryService))
-	oci.HEAD("/:name/blobs/:digest", middleware.OptionalAuthMiddleware(authService), handleOCIBlobHead(registryService))
+	// Blob operations - requires authentication
+	oci.GET("/:name/blobs/:digest", middleware.AuthMiddleware(authService), handleOCIBlobGet(registryService))
+	oci.HEAD("/:name/blobs/:digest", middleware.AuthMiddleware(authService), handleOCIBlobHead(registryService))
 	oci.DELETE("/:name/blobs/:digest", middleware.AuthMiddleware(authService), handleOCIBlobDelete(registryService))
 
 	// Blob upload operations
@@ -58,11 +58,11 @@ func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authServ
 	oci.DELETE("/:name/blobs/uploads/:uuid", middleware.AuthMiddleware(authService), handleOCIBlobUploadCancel(registryService))
 	oci.GET("/:name/blobs/uploads/:uuid", middleware.AuthMiddleware(authService), handleOCIBlobUploadStatus(registryService))
 
-	// Tag listing
-	oci.GET("/:name/tags/list", middleware.OptionalAuthMiddleware(authService), handleOCITagsList(registryService))
+	// Tag listing - requires authentication
+	oci.GET("/:name/tags/list", middleware.AuthMiddleware(authService), handleOCITagsList(registryService))
 
-	// Catalog (repository listing)
-	oci.GET("/_catalog", middleware.OptionalAuthMiddleware(authService), handleOCICatalog(registryService))
+	// Catalog (repository listing) - requires authentication
+	oci.GET("/_catalog", middleware.AuthMiddleware(authService), handleOCICatalog(registryService))
 }
 
 // OCIRootRoutes sets up OCI (Docker) registry routes at root level for Docker CLI compatibility
@@ -816,7 +816,7 @@ func handleOCIRequest(registryService *registry.Service, authService *auth.Servi
 		// Handle catalog endpoint specifically
 		if path == "_catalog" {
 			if method == "GET" {
-				middleware.OptionalAuthMiddleware(authService)(c)
+				middleware.AuthMiddleware(authService)(c)
 				if c.IsAborted() {
 					return
 				}
@@ -829,7 +829,7 @@ func handleOCIRequest(registryService *registry.Service, authService *auth.Servi
 		if strings.HasSuffix(path, "/tags/list") {
 			// Repository tags list
 			if method == "GET" {
-				middleware.OptionalAuthMiddleware(authService)(c)
+				middleware.AuthMiddleware(authService)(c)
 				if c.IsAborted() {
 					return
 				}
@@ -837,16 +837,10 @@ func handleOCIRequest(registryService *registry.Service, authService *auth.Servi
 				return
 			}
 		} else if strings.Contains(path, "/manifests/") {
-			// Manifest operations
-			middleware.OptionalAuthMiddleware(authService)(c)
-			if c.IsAborted() && (method == "PUT" || method == "DELETE") {
+			// Manifest operations - require authentication for all operations
+			middleware.AuthMiddleware(authService)(c)
+			if c.IsAborted() {
 				return
-			}
-			if method == "PUT" || method == "DELETE" {
-				middleware.AuthMiddleware(authService)(c)
-				if c.IsAborted() {
-					return
-				}
 			}
 			handleOCIManifestCatchAll(registryService)(c)
 			return
@@ -859,16 +853,10 @@ func handleOCIRequest(registryService *registry.Service, authService *auth.Servi
 			handleOCIBlobUploadCatchAll(registryService)(c)
 			return
 		} else if strings.Contains(path, "/blobs/") {
-			// Blob operations
-			middleware.OptionalAuthMiddleware(authService)(c)
-			if c.IsAborted() && method == "DELETE" {
+			// Blob operations - require authentication for all operations
+			middleware.AuthMiddleware(authService)(c)
+			if c.IsAborted() {
 				return
-			}
-			if method == "DELETE" {
-				middleware.AuthMiddleware(authService)(c)
-				if c.IsAborted() {
-					return
-				}
 			}
 			handleOCIBlobCatchAll(registryService)(c)
 			return

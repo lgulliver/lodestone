@@ -152,6 +152,12 @@ func optionalAuthMiddlewareWithInterface(authService AuthServiceInterface) gin.H
 			if user, _, err := authService.ValidateAPIKey(ctx, apiKey); err == nil {
 				c.Set("user", user)
 			}
+		} else if apiKey := c.GetHeader("X-NuGet-ApiKey"); apiKey != "" {
+			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
+
+			if user, _, err := authService.ValidateAPIKey(ctx, apiKey); err == nil {
+				c.Set("user", user)
+			}
 		} else if apiKey := c.Query("api_key"); apiKey != "" {
 			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
 

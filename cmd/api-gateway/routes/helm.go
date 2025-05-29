@@ -18,9 +18,9 @@ import (
 func HelmRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	helm := api.Group("/helm")
 
-	// Helm repository API
-	helm.GET("/index.yaml", handleHelmIndex(registryService))
-	helm.GET("/:chart/:version/:filename", middleware.OptionalAuthMiddleware(authService), handleHelmDownload(registryService))
+	// Helm repository API - requires authentication
+	helm.GET("/index.yaml", middleware.AuthMiddleware(authService), handleHelmIndex(registryService))
+	helm.GET("/:chart/:version/:filename", middleware.AuthMiddleware(authService), handleHelmDownload(registryService))
 
 	// Chart upload (requires authentication)
 	helm.POST("/api/charts", middleware.AuthMiddleware(authService), handleHelmUpload(registryService))

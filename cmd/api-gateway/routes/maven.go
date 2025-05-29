@@ -17,10 +17,10 @@ import (
 func MavenRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	maven := api.Group("/maven")
 
-	// Maven repository structure: groupId/artifactId/version/artifactId-version.jar
-	maven.GET("/*path", middleware.OptionalAuthMiddleware(authService), handleMavenDownload(registryService))
+	// Maven repository structure: groupId/artifactId/version/artifactId-version.jar - requires authentication
+	maven.GET("/*path", middleware.AuthMiddleware(authService), handleMavenDownload(registryService))
 	maven.PUT("/*path", middleware.AuthMiddleware(authService), handleMavenUpload(registryService))
-	maven.HEAD("/*path", middleware.OptionalAuthMiddleware(authService), handleMavenHead(registryService))
+	maven.HEAD("/*path", middleware.AuthMiddleware(authService), handleMavenHead(registryService))
 	maven.DELETE("/*path", middleware.AuthMiddleware(authService), handleMavenDelete(registryService))
 }
 

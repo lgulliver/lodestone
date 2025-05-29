@@ -17,6 +17,7 @@ import (
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/internal/registry"
+	"github.com/lgulliver/lodestone/internal/registry/registries/nuget"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/rs/zerolog/log"
 )
@@ -92,9 +93,9 @@ func NuGetRoutes(api *gin.RouterGroup, registryService *registry.Service, authSe
 	nuget.GET("/v3/index.json", handleNuGetServiceIndex())
 
 	// NuGet v3 API routes
-	// Package content (flat container)
-	nuget.GET("/v3-flatcontainer/:id/index.json", handleNuGetPackageVersions(registryService))
-	nuget.GET("/v3-flatcontainer/:id/:version/:filename", middleware.OptionalAuthMiddleware(authService), handleNuGetDownload(registryService))
+	// Package content (flat container) - discovery endpoints allow optional auth, downloads require auth
+	nuget.GET("/v3-flatcontainer/:id/index.json", middleware.OptionalAuthMiddleware(authService), handleNuGetPackageVersions(registryService))
+	nuget.GET("/v3-flatcontainer/:id/:version/:filename", middleware.AuthMiddleware(authService), handleNuGetDownload(registryService))
 
 	// Package publish (requires authentication) - NuGet v2 API
 	nuget.PUT("/v2/package", middleware.AuthMiddleware(authService), handleNuGetUpload(registryService))
@@ -103,13 +104,13 @@ func NuGetRoutes(api *gin.RouterGroup, registryService *registry.Service, authSe
 
 	// Symbol package endpoints (requires authentication) - NuGet v2 API
 	nuget.PUT("/v2/symbolpackage", middleware.AuthMiddleware(authService), handleNuGetSymbolUpload(registryService))
-	nuget.GET("/symbols/:id/:version/:filename", middleware.OptionalAuthMiddleware(authService), handleNuGetSymbolDownload(registryService))
+	nuget.GET("/symbols/:id/:version/:filename", middleware.AuthMiddleware(authService), handleNuGetSymbolDownload(registryService))
 
-	// Search API
-	nuget.GET("/v3/search", handleNuGetSearch(registryService))
+	// Search API - allows optional auth for discovery but requires auth for private packages
+	nuget.GET("/v3/search", middleware.OptionalAuthMiddleware(authService), handleNuGetSearch(registryService))
 
-	// Package registration (metadata)
-	nuget.GET("/v3/registration/:id/index.json", handleNuGetPackageMetadata(registryService))
+	// Package registration (metadata) - allow optional auth for discovery
+	nuget.GET("/v3/registration/:id/index.json", middleware.OptionalAuthMiddleware(authService), handleNuGetPackageMetadata(registryService))
 }
 
 func handleNuGetServiceIndex() gin.HandlerFunc {
@@ -237,7 +238,9 @@ func handleNuGetDownload(registryService *registry.Service) gin.HandlerFunc {
 		defer content.Close()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream package content"})
+			// Log error but don't send JSON response as headers are already sent
+			log.Error().Err(err).Msg("Failed to stream package content")
+			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 	}
@@ -252,71 +255,87 @@ func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		// Log request details for debugging
+		contentType := c.GetHeader("Content-Type")
 		log.Info().
 			Str("method", c.Request.Method).
-			Str("content_type", c.GetHeader("Content-Type")).
+			Str("content_type", contentType).
 			Int64("content_length", c.Request.ContentLength).
 			Msg("Processing NuGet upload request")
-
-		// Parse multipart form to check available fields
-		err := c.Request.ParseMultipartForm(32 << 20) // 32MB max
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to parse multipart form")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse multipart form", "details": err.Error()})
-			return
-		}
-
-		// Log available form fields for debugging
-		log.Info().Interface("form_fields", c.Request.MultipartForm.File).Msg("Available form fields")
-
-		// Try different possible field names for the package file
-		var file multipart.File
-		var header *multipart.FileHeader
-		for _, fieldName := range []string{"package", "file"} {
-			file, header, err = c.Request.FormFile(fieldName)
-			if err == nil {
-				log.Info().Str("field_name", fieldName).Str("filename", header.Filename).Msg("Found file in form field")
-				break
-			}
-		}
-
-		// If no file found with known field names, try to get the first file
-		if err != nil && c.Request.MultipartForm != nil && len(c.Request.MultipartForm.File) > 0 {
-			for fieldName, files := range c.Request.MultipartForm.File {
-				if len(files) > 0 {
-					header = files[0]
-					file, err = header.Open()
-					log.Info().Str("field_name", fieldName).Str("filename", header.Filename).Msg("Using first available file")
-					break
-				}
-			}
-		}
-
-		if err != nil {
-			log.Error().Err(err).Msg("No package file found in upload")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no package file found in upload", "details": err.Error()})
-			return
-		}
-		defer file.Close()
 
 		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		// Validate file extension
-		filename := header.Filename
-		log.Info().Str("filename", filename).Msg("Processing NuGet package filename")
+		var fileContent []byte
+		var filename string
+		var err error
 
-		if !strings.HasSuffix(filename, ".nupkg") {
-			log.Error().Str("filename", filename).Msg("Invalid package file extension")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid package file extension"})
-			return
+		// Handle different upload methods: multipart form data or raw binary
+		if strings.HasPrefix(contentType, "multipart/form-data") {
+			// Handle multipart form data (web uploads)
+			err := c.Request.ParseMultipartForm(32 << 20) // 32MB max
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to parse multipart form")
+				c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse multipart form", "details": err.Error()})
+				return
+			}
+
+			// Try different possible field names for the package file
+			var file multipart.File
+			var header *multipart.FileHeader
+			for _, fieldName := range []string{"package", "file"} {
+				file, header, err = c.Request.FormFile(fieldName)
+				if err == nil {
+					break
+				}
+			}
+
+			// If no file found with known field names, try to get the first file
+			if err != nil && c.Request.MultipartForm != nil && len(c.Request.MultipartForm.File) > 0 {
+				for _, files := range c.Request.MultipartForm.File {
+					if len(files) > 0 {
+						header = files[0]
+						file, err = header.Open()
+						break
+					}
+				}
+			}
+
+			if err != nil {
+				log.Error().Err(err).Msg("No package file found in upload")
+				c.JSON(http.StatusBadRequest, gin.H{"error": "no package file found in upload"})
+				return
+			}
+			defer file.Close()
+
+			filename = header.Filename
+			fileContent, err = io.ReadAll(file)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to read package file content")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read package file"})
+				return
+			}
+		} else {
+			// Handle raw binary upload (NuGet CLI)
+			fileContent, err = io.ReadAll(c.Request.Body)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to read request body")
+				c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+				return
+			}
+
+			// For raw uploads, we'll extract the filename from package metadata
+			// For now, use a temporary filename that will be corrected later
+			filename = "package.nupkg"
 		}
 
-		// Read the entire file content to parse the .nupkg
-		fileContent, err := io.ReadAll(file)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to read package file content")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read package file"})
+		log.Info().
+			Str("filename", filename).
+			Int("content_size", len(fileContent)).
+			Msg("Processing NuGet package")
+
+		// Validate it's a .nupkg file (for multipart uploads)
+		if strings.Contains(filename, ".") && !strings.HasSuffix(strings.ToLower(filename), ".nupkg") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid package file extension"})
 			return
 		}
 
@@ -334,7 +353,7 @@ func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 			Str("version", version).
 			Msg("Successfully extracted package information from .nupkg file")
 
-		// Create a new reader from the file content for upload
+		// Create a reader from the file content for upload
 		contentReader := bytes.NewReader(fileContent)
 
 		_, err = registryService.Upload(ctx, "nuget", packageName, version, contentReader, user.ID)
@@ -550,80 +569,120 @@ func handleNuGetSymbolUpload(registryService *registry.Service) gin.HandlerFunc 
 			return
 		}
 
-		// Get the uploaded file
-		file, err := c.FormFile("package")
+		log.Info().
+			Str("method", c.Request.Method).
+			Str("content_type", c.GetHeader("Content-Type")).
+			Int64("content_length", c.Request.ContentLength).
+			Msg("Processing NuGet symbol upload request")
+
+		var content []byte
+		var filename string
+		var err error
+
+		contentType := c.GetHeader("Content-Type")
+		if strings.HasPrefix(contentType, "multipart/form-data") {
+			// Handle multipart form upload (web interface)
+			log.Info().Msg("Processing multipart form symbol upload")
+			file, err := c.FormFile("package")
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to get form file")
+				c.JSON(http.StatusBadRequest, gin.H{"error": "no package file provided"})
+				return
+			}
+			filename = file.Filename
+			src, err := file.Open()
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to open uploaded file")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open uploaded file"})
+				return
+			}
+			defer src.Close()
+			content, err = io.ReadAll(src)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to read uploaded file")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read uploaded file"})
+				return
+			}
+		} else {
+			// Accept both application/octet-stream and other raw uploads (dotnet CLI)
+			log.Info().Msg("Processing raw binary symbol upload")
+			content, err = io.ReadAll(c.Request.Body)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to read request body")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read request body"})
+				return
+			}
+			filename = ""
+		}
+
+		log.Info().
+			Str("filename", filename).
+			Int("content_size", len(content)).
+			Msg("Symbol package content processed")
+
+		// Always extract package name and version from content
+		packageName, version, err := extractSymbolPackageInfo(content)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no package file provided"})
+			log.Error().Err(err).Msg("Failed to extract package info from symbol package")
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to extract package information: %v", err)})
 			return
 		}
 
-		// Open the file
-		src, err := file.Open()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open uploaded file"})
-			return
-		}
-		defer src.Close()
-
-		// Read the content
-		content, err := io.ReadAll(src)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read uploaded file"})
-			return
+		if filename == "" {
+			filename = fmt.Sprintf("%s.%s.snupkg", packageName, version)
 		}
 
-		// Parse the filename to extract package name and version
-		// Expected format: packagename.version.snupkg
-		filename := file.Filename
 		if !strings.HasSuffix(strings.ToLower(filename), ".snupkg") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "symbol package must have .snupkg extension"})
 			return
 		}
 
-		// Remove .snupkg extension and parse name.version
-		nameVersion := strings.TrimSuffix(filename, ".snupkg")
-		parts := strings.Split(nameVersion, ".")
-		if len(parts) < 4 { // name.major.minor.patch at minimum
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid symbol package filename format"})
+		// Create artifact with symbol package metadata
+		symbolArtifactName := packageName + ".symbols"
+		artifact := &types.Artifact{
+			Name:        symbolArtifactName,
+			Version:     version,
+			Registry:    "nuget",
+			PublishedBy: user.ID,
+			Size:        int64(len(content)),
+			ContentType: "application/vnd.nuget.symbolpackage",
+			Metadata: map[string]interface{}{
+				"packageType":   "symbols",
+				"parentPackage": packageName,
+				"contentType":   "application/vnd.nuget.symbolpackage",
+				"filename":      filename,
+			},
+		}
+
+		nugetRegistry := &nuget.Registry{}
+		artifact.StoragePath = nugetRegistry.GenerateSymbolStoragePath(packageName, version)
+
+		if err := nugetRegistry.Validate(artifact, content); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("validation failed: %v", err)})
 			return
 		}
 
-		// Find the last occurrence that looks like a version (contains digits)
-		var packageName, version string
-		for i := len(parts) - 3; i >= 0; i-- {
-			if len(parts) > i+2 {
-				candidateVersion := strings.Join(parts[i:], ".")
-				// Check if this looks like a version
-				if isValidVersion(candidateVersion) {
-					packageName = strings.Join(parts[:i], ".")
-					version = candidateVersion
-					break
-				}
-			}
-		}
-
-		if packageName == "" || version == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse package name and version from filename"})
+		// Check if symbol package already exists
+		var existingSymbol types.Artifact
+		symbolStoragePath := nugetRegistry.GenerateSymbolStoragePath(packageName, version)
+		if err := registryService.DB.Where("storage_path = ? AND registry = ?", symbolStoragePath, "nuget").First(&existingSymbol).Error; err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "symbol package already exists"})
 			return
 		}
 
-		// Upload the symbol package directly
-		result, err := registryService.Upload(c.Request.Context(), "nuget", packageName, version, bytes.NewReader(content), user.ID)
-		if err != nil {
-			if strings.Contains(err.Error(), "already exists") {
-				c.JSON(http.StatusConflict, gin.H{"error": "symbol package already exists"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if err := registryService.Storage.Store(c.Request.Context(), artifact.StoragePath, bytes.NewReader(content), "application/vnd.nuget.symbolpackage"); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to store symbol package: %v", err)})
 			return
 		}
 
-		c.JSON(http.StatusCreated, gin.H{
-			"message":     "Symbol package uploaded successfully",
-			"packageName": result.Name,
-			"version":     result.Version,
-			"id":          result.ID,
-		})
+		if err := registryService.DB.Create(artifact).Error; err != nil {
+			registryService.Storage.Delete(c.Request.Context(), artifact.StoragePath)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to save symbol package metadata: %v", err)})
+			return
+		}
+
+		// NuGet expects an empty body and 201 Created for successful push
+		c.Status(http.StatusCreated)
 	}
 }
 
@@ -640,9 +699,10 @@ func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFun
 			return
 		}
 
-		// Find the symbol package artifact
+		// Find the symbol package artifact using the symbol-specific name
+		symbolArtifactName := packageName + ".symbols"
 		filter := &types.ArtifactFilter{
-			Name:     packageName,
+			Name:     symbolArtifactName,
 			Registry: "nuget",
 		}
 
@@ -652,11 +712,11 @@ func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFun
 			return
 		}
 
-		// Look for the symbol package specifically
+		// Look for the symbol package with the correct version
 		var symbolArtifact *types.Artifact
 		for _, artifact := range artifacts {
-			if artifact.Metadata != nil {
-				if packageType, exists := artifact.Metadata["packageType"]; exists && packageType == "SymbolsPackage" {
+			if artifact.Version == version && artifact.Metadata != nil {
+				if packageType, exists := artifact.Metadata["packageType"]; exists && packageType == "symbols" {
 					symbolArtifact = artifact
 					break
 				}
@@ -668,8 +728,8 @@ func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFun
 			return
 		}
 
-		// Download the symbol package
-		_, content, err := registryService.Download(c.Request.Context(), "nuget", packageName, version)
+		// Download the symbol package using the registry service to get proper metadata
+		_, content, err := registryService.Download(c.Request.Context(), "nuget", symbolArtifactName, version)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "symbol package not found"})
 			return
@@ -680,6 +740,11 @@ func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFun
 		c.Header("Content-Type", "application/vnd.nuget.symbolpackage")
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
+		// Set Content-Length from the artifact size
+		if symbolArtifact.Size > 0 {
+			c.Header("Content-Length", strconv.FormatInt(symbolArtifact.Size, 10))
+		}
+
 		// Stream the content
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
@@ -689,9 +754,138 @@ func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFun
 	}
 }
 
+// extractSymbolPackageFilename extracts the filename from symbol package content
+// by reading the ZIP file structure (symbol packages are ZIP files)
+func extractSymbolPackageFilename(content []byte) (string, error) {
+	// Read ZIP content to extract package information
+	reader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		return "", fmt.Errorf("failed to read symbol package as ZIP: %w", err)
+	}
+
+	// Look for .pdb files or .nuspec files to determine package name
+	var packageName, version string
+
+	for _, file := range reader.File {
+		if strings.HasSuffix(file.Name, ".pdb") {
+			// Extract from path like lib/net8.0/PackageName.pdb
+			parts := strings.Split(file.Name, "/")
+			if len(parts) > 0 {
+				pdbName := parts[len(parts)-1]
+				if strings.HasSuffix(pdbName, ".pdb") {
+					packageName = strings.TrimSuffix(pdbName, ".pdb")
+					break
+				}
+			}
+		}
+	}
+
+	// If we can't extract from PDB, try to parse from any .nuspec file
+	if packageName == "" {
+		for _, file := range reader.File {
+			if strings.HasSuffix(file.Name, ".nuspec") {
+				// Parse nuspec file
+				rc, err := file.Open()
+				if err != nil {
+					continue
+				}
+				defer rc.Close()
+
+				nuspecContent, err := io.ReadAll(rc)
+				if err != nil {
+					continue
+				}
+
+				// Simple XML parsing to extract package ID and version
+				packageName, version = parseSymbolNuspecContent(nuspecContent)
+				if packageName != "" && version != "" {
+					break
+				}
+			}
+		}
+	}
+
+	// If still no package name, use a generic approach
+	if packageName == "" {
+		packageName = "unknown.package"
+	}
+	if version == "" {
+		version = "1.0.0"
+	}
+
+	return fmt.Sprintf("%s.%s.snupkg", packageName, version), nil
+}
+
+// parseSymbolNuspecContent parses nuspec XML content to extract package ID and version
+func parseSymbolNuspecContent(content []byte) (string, string) {
+	// Simple regex-based parsing since we don't want to add XML dependency
+	idRegex := regexp.MustCompile(`<id>([^<]+)</id>`)
+	versionRegex := regexp.MustCompile(`<version>([^<]+)</version>`)
+
+	var packageID, version string
+
+	if match := idRegex.FindSubmatch(content); len(match) > 1 {
+		packageID = string(match[1])
+	}
+
+	if match := versionRegex.FindSubmatch(content); len(match) > 1 {
+		version = string(match[1])
+	}
+
+	return packageID, version
+}
+
 // isValidVersion checks if a string looks like a semantic version
 func isValidVersion(version string) bool {
 	// Simple check for version pattern: digits, dots, and optional pre-release/build metadata
 	versionRegex := regexp.MustCompile(`^\d+\.\d+\.\d+`)
 	return versionRegex.MatchString(version)
+}
+
+// extractSymbolPackageInfo extracts package name and version from .snupkg file contents
+func extractSymbolPackageInfo(fileContent []byte) (string, string, error) {
+	// Create a byte reader for the zip content
+	reader := bytes.NewReader(fileContent)
+	zipReader, err := zip.NewReader(reader, int64(len(fileContent)))
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read snupkg as zip: %w", err)
+	}
+
+	// Look for .nuspec file in the zip - symbol packages contain the same metadata
+	for _, file := range zipReader.File {
+		if strings.HasSuffix(file.Name, ".nuspec") {
+			log.Info().Str("nuspec_file", file.Name).Msg("Found .nuspec file in symbol package")
+
+			rc, err := file.Open()
+			if err != nil {
+				return "", "", fmt.Errorf("failed to open nuspec file: %w", err)
+			}
+			defer rc.Close()
+
+			// Read and parse the .nuspec XML
+			nuspecContent, err := io.ReadAll(rc)
+			if err != nil {
+				return "", "", fmt.Errorf("failed to read nuspec content: %w", err)
+			}
+
+			var nuspec NuSpec
+			err = xml.Unmarshal(nuspecContent, &nuspec)
+			if err != nil {
+				return "", "", fmt.Errorf("failed to parse nuspec XML: %w", err)
+			}
+
+			if nuspec.Metadata.ID == "" || nuspec.Metadata.Version == "" {
+				return "", "", fmt.Errorf("missing required metadata in nuspec file")
+			}
+
+			log.Info().
+				Str("package_id", nuspec.Metadata.ID).
+				Str("version", nuspec.Metadata.Version).
+				Msg("Extracted symbol package metadata from .nuspec file")
+
+			return nuspec.Metadata.ID, nuspec.Metadata.Version, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("no .nuspec file found in symbol package")
 }

@@ -18,10 +18,10 @@ import (
 func OPARoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	opa := api.Group("/opa")
 
-	// OPA bundle API
-	opa.GET("/bundles/:name", middleware.OptionalAuthMiddleware(authService), handleOPABundleDownload(registryService))
-	opa.GET("/bundles/:name/:version", middleware.OptionalAuthMiddleware(authService), handleOPABundleVersionDownload(registryService))
-	opa.GET("/bundles", handleOPABundleList(registryService))
+	// OPA bundle API - requires authentication
+	opa.GET("/bundles/:name", middleware.AuthMiddleware(authService), handleOPABundleDownload(registryService))
+	opa.GET("/bundles/:name/:version", middleware.AuthMiddleware(authService), handleOPABundleVersionDownload(registryService))
+	opa.GET("/bundles", middleware.AuthMiddleware(authService), handleOPABundleList(registryService))
 
 	// Bundle upload (requires authentication)
 	opa.PUT("/bundles/:name", middleware.AuthMiddleware(authService), handleOPABundleUpload(registryService))

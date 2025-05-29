@@ -18,12 +18,12 @@ import (
 func GoRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	goproxy := api.Group("/go")
 
-	// Go module proxy protocol
-	goproxy.GET("/:module/@latest", handleGoLatest(registryService))
-	goproxy.GET("/:module/@v/list", handleGoVersionList(registryService))
+	// Go module proxy protocol - requires authentication
+	goproxy.GET("/:module/@latest", middleware.AuthMiddleware(authService), handleGoLatest(registryService))
+	goproxy.GET("/:module/@v/list", middleware.AuthMiddleware(authService), handleGoVersionList(registryService))
 
 	// Handle versioned operations - this will detect file extensions like .info, .mod, .zip
-	goproxy.GET("/:module/@v/:version", handleGoVersionFile(registryService))
+	goproxy.GET("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoVersionFile(registryService))
 
 	// Module upload and delete (custom extension to Go proxy protocol)
 	goproxy.PUT("/:module/@v/:version", middleware.AuthMiddleware(authService), handleGoModuleUpload(registryService))

@@ -54,9 +54,50 @@ make deploy
 
 For detailed deployment options, see [deploy/README.md](deploy/README.md).
 
+## Package Format Documentation
+
+Detailed guides for using Lodestone with specific package formats:
+
+- **[NuGet Documentation](docs/NUGET.md)** - Complete guide for .NET packages, including symbol packages
+- **Maven** - Java package management (coming soon)
+- **npm** - Node.js package management (coming soon)
+- **Cargo** - Rust package management (coming soon)
+- **OCI** - Container image management (coming soon)
+- **Helm** - Kubernetes chart management (coming soon)
+
+## Authentication
+
+All package operations require API key authentication. Generate API keys through the web interface or CLI:
+
+```bash
+# Generate a new API key
+curl -X POST "http://localhost:8080/api/v1/auth/api-keys" \
+    -H "Authorization: Bearer your-jwt-token" \
+    -H "Content-Type: application/json" \
+    -d '{"name": "my-build-key", "scopes": ["read", "write"]}'
+```
+
+API keys should be included in requests using the `X-NuGet-ApiKey` header for NuGet operations, or similar format for other package types.
+
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+For development setup and guidelines:
+
+```bash
+# Install dependencies
+go mod download
+
+# Run tests
+make test
+
+# Build locally
+make build
+
+# Run with hot reload (requires air)
+air
+```
+
+See the code structure and architecture documentation in the codebase for development guidelines.
 
 ## License
 

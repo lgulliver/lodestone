@@ -27,15 +27,15 @@ import (
 func NPMRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	npm := api.Group("/npm")
 
-	// Package metadata and download
-	npm.GET("/:name", handleNPMPackageInfo(registryService))
-	npm.GET("/:name/:version", handleNPMPackageVersion(registryService))
-	npm.GET("/@:scope/:name", handleNPMScopedPackageInfo(registryService))
-	npm.GET("/@:scope/:name/:version", handleNPMScopedPackageVersion(registryService))
+	// Package metadata and download - requires authentication
+	npm.GET("/:name", middleware.AuthMiddleware(authService), handleNPMPackageInfo(registryService))
+	npm.GET("/:name/:version", middleware.AuthMiddleware(authService), handleNPMPackageVersion(registryService))
+	npm.GET("/@:scope/:name", middleware.AuthMiddleware(authService), handleNPMScopedPackageInfo(registryService))
+	npm.GET("/@:scope/:name/:version", middleware.AuthMiddleware(authService), handleNPMScopedPackageVersion(registryService))
 
-	// Package tarball download
-	npm.GET("/:name/-/:filename", handleNPMDownload(registryService))
-	npm.GET("/@:scope/:name/-/:filename", handleNPMScopedDownload(registryService))
+	// Package tarball download - requires authentication
+	npm.GET("/:name/-/:filename", middleware.AuthMiddleware(authService), handleNPMDownload(registryService))
+	npm.GET("/@:scope/:name/-/:filename", middleware.AuthMiddleware(authService), handleNPMScopedDownload(registryService))
 
 	// Package publish (requires authentication)
 	npm.PUT("/:name", middleware.AuthMiddleware(authService), handleNPMPublish(registryService))
@@ -45,8 +45,8 @@ func NPMRoutes(api *gin.RouterGroup, registryService *registry.Service, authServ
 	npm.DELETE("/:name/-rev/:rev", middleware.AuthMiddleware(authService), handleNPMDelete(registryService))
 	npm.DELETE("/@:scope/:name/-rev/:rev", middleware.AuthMiddleware(authService), handleNPMScopedDelete(registryService))
 
-	// Search
-	npm.GET("/-/v1/search", handleNPMSearch(registryService))
+	// Search - requires authentication
+	npm.GET("/-/v1/search", middleware.AuthMiddleware(authService), handleNPMSearch(registryService))
 }
 
 // computeArtifactSHA1 computes the SHA1 hash of an artifact's content

@@ -18,20 +18,20 @@ import (
 func RubyGemsRoutes(api *gin.RouterGroup, registryService *registry.Service, authService *auth.Service) {
 	gems := api.Group("/gems")
 
-	// RubyGems API
-	gems.GET("/api/v1/gems", handleGemsSearch(registryService))
-	gems.GET("/api/v1/gems/:name.json", handleGemInfo(registryService))
-	gems.GET("/api/v1/versions/:name.json", handleGemVersions(registryService))
-	gems.GET("/gems/:filename", handleGemDownload(registryService))
+	// RubyGems API - requires authentication
+	gems.GET("/api/v1/gems", middleware.AuthMiddleware(authService), handleGemsSearch(registryService))
+	gems.GET("/api/v1/gems/:name.json", middleware.AuthMiddleware(authService), handleGemInfo(registryService))
+	gems.GET("/api/v1/versions/:name.json", middleware.AuthMiddleware(authService), handleGemVersions(registryService))
+	gems.GET("/gems/:filename", middleware.AuthMiddleware(authService), handleGemDownload(registryService))
 
 	// Gem push (requires authentication)
 	gems.POST("/api/v1/gems", middleware.AuthMiddleware(authService), handleGemPush(registryService))
 	gems.DELETE("/api/v1/gems/yank", middleware.AuthMiddleware(authService), handleGemYank(registryService))
 
-	// Specs endpoints for bundler
-	gems.GET("/specs.4.8.gz", handleSpecs(registryService))
-	gems.GET("/latest_specs.4.8.gz", handleLatestSpecs(registryService))
-	gems.GET("/prerelease_specs.4.8.gz", handlePrereleaseSpecs(registryService))
+	// Specs endpoints for bundler - requires authentication
+	gems.GET("/specs.4.8.gz", middleware.AuthMiddleware(authService), handleSpecs(registryService))
+	gems.GET("/latest_specs.4.8.gz", middleware.AuthMiddleware(authService), handleLatestSpecs(registryService))
+	gems.GET("/prerelease_specs.4.8.gz", middleware.AuthMiddleware(authService), handlePrereleaseSpecs(registryService))
 }
 
 func handleGemsSearch(registryService *registry.Service) gin.HandlerFunc {
