@@ -75,6 +75,22 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 			log.Warn().Err(err).Msg("API key validation failed")
 		}
 
+		// Check for API key in X-NuGet-ApiKey header (NuGet specific)
+		nugetApiKey := c.GetHeader("X-NuGet-ApiKey")
+		if nugetApiKey != "" {
+			log.Debug().Str("path", c.Request.URL.Path).Msg("Validating NuGet API key from header")
+			ctx := context.WithValue(c.Request.Context(), "api_key", nugetApiKey)
+
+			user, _, err := authService.ValidateAPIKey(ctx, nugetApiKey)
+			if err == nil {
+				log.Debug().Str("username", user.Username).Msg("NuGet API key validation successful")
+				c.Set("user", user)
+				c.Next()
+				return
+			}
+			log.Warn().Err(err).Msg("NuGet API key validation failed")
+		}
+
 		// Check for API key in query parameter (for some package managers)
 		if apiKey := c.Query("api_key"); apiKey != "" {
 			log.Debug().Str("path", c.Request.URL.Path).Msg("Validating API key from query parameter")

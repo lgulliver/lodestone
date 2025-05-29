@@ -91,7 +91,7 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	// Create artifact object
 	artifact := &types.Artifact{
 		ID:          uuid.New(), // Generate new UUID
-		Name:        utils.SanitizePackageName(name),
+		Name:        utils.SanitizePackageName(name, registryType),
 		Version:     version,
 		Registry:    registryType,
 		Size:        int64(len(contentBytes)),
@@ -183,7 +183,7 @@ func (s *Service) List(ctx context.Context, filter *types.ArtifactFilter) ([]*ty
 
 	// Apply filters
 	if filter.Name != "" {
-		query = query.Where("name LIKE ?", "%"+filter.Name+"%")
+		query = query.Where("name ILIKE ?", "%"+filter.Name+"%")
 	}
 	if filter.Registry != "" {
 		query = query.Where("registry = ?", filter.Registry)

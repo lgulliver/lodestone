@@ -103,11 +103,24 @@ func ComputeSHA1FromReader(reader io.Reader) (string, error) {
 }
 
 // SanitizePackageName sanitizes a package name for safe storage
-func SanitizePackageName(name string) string {
-	// Convert to lowercase and replace invalid characters
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, " ", "-")
-	name = strings.ReplaceAll(name, "_", "-")
+// Behavior varies by registry type:
+// - npm: lowercase (case insensitive)
+// - nuget: preserve case (case sensitive)  
+// - maven: preserve case (case sensitive)
+// - other: lowercase by default
+func SanitizePackageName(name, registryType string) string {
+	// Handle case sensitivity based on registry type
+	switch registryType {
+	case "nuget", "maven":
+		// Case-sensitive registries: preserve original case
+		name = strings.ReplaceAll(name, " ", "-")
+		name = strings.ReplaceAll(name, "_", "-")
+	default:
+		// Case-insensitive registries (npm, etc.): convert to lowercase
+		name = strings.ToLower(name)
+		name = strings.ReplaceAll(name, " ", "-")
+		name = strings.ReplaceAll(name, "_", "-")
+	}
 	return name
 }
 

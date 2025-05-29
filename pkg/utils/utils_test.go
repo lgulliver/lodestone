@@ -75,40 +75,76 @@ func TestCheckPassword(t *testing.T) {
 
 func TestSanitizePackageName(t *testing.T) {
 	tests := []struct {
-		name  string
-		input string
-		want  string
+		name         string
+		input        string
+		registryType string
+		want         string
 	}{
 		{
-			name:  "uppercase to lowercase",
-			input: "MyPackage",
-			want:  "mypackage",
+			name:         "npm uppercase to lowercase",
+			input:        "MyPackage",
+			registryType: "npm",
+			want:         "mypackage",
 		},
 		{
-			name:  "spaces to hyphens",
-			input: "my package",
-			want:  "my-package",
+			name:         "npm spaces to hyphens",
+			input:        "my package",
+			registryType: "npm",
+			want:         "my-package",
 		},
 		{
-			name:  "underscores to hyphens",
-			input: "my_package",
-			want:  "my-package",
+			name:         "npm underscores to hyphens",
+			input:        "my_package",
+			registryType: "npm",
+			want:         "my-package",
 		},
 		{
-			name:  "mixed case and characters",
-			input: "My_Package Name",
-			want:  "my-package-name",
+			name:         "npm mixed case and characters",
+			input:        "My_Package Name",
+			registryType: "npm",
+			want:         "my-package-name",
 		},
 		{
-			name:  "already clean",
-			input: "my-package",
-			want:  "my-package",
+			name:         "npm already clean",
+			input:        "my-package",
+			registryType: "npm",
+			want:         "my-package",
+		},
+		{
+			name:         "nuget preserve case",
+			input:        "Lodestone.TestLibrary",
+			registryType: "nuget",
+			want:         "Lodestone.TestLibrary",
+		},
+		{
+			name:         "nuget spaces to hyphens",
+			input:        "My Package Name",
+			registryType: "nuget",
+			want:         "My-Package-Name",
+		},
+		{
+			name:         "nuget underscores to hyphens",
+			input:        "My_Package_Name",
+			registryType: "nuget",
+			want:         "My-Package-Name",
+		},
+		{
+			name:         "maven preserve case",
+			input:        "com.example.MyArtifact",
+			registryType: "maven",
+			want:         "com.example.MyArtifact",
+		},
+		{
+			name:         "default registry lowercase",
+			input:        "MyPackage",
+			registryType: "cargo",
+			want:         "mypackage",
 		},
 	}
 	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SanitizePackageName(tt.input); got != tt.want {
+			if got := SanitizePackageName(tt.input, tt.registryType); got != tt.want {
 				t.Errorf("SanitizePackageName() = %v, want %v", got, tt.want)
 			}
 		})
