@@ -24,28 +24,7 @@ type Registry struct {
 	db      *common.Database
 }
 
-// PackageManifest represents package.json structure
-type PackageManifest struct {
-	Name             string                 `json:"name"`
-	Version          string                 `json:"version"`
-	Description      string                 `json:"description,omitempty"`
-	Author           interface{}            `json:"author,omitempty"` // Can be string or object
-	License          string                 `json:"license,omitempty"`
-	Dependencies     map[string]string      `json:"dependencies,omitempty"`
-	DevDependencies  map[string]string      `json:"devDependencies,omitempty"`
-	Keywords         []string               `json:"keywords,omitempty"`
-	Repository       interface{}            `json:"repository,omitempty"`       // Can be string or object
-	DistTags         map[string]string      `json:"dist-tags,omitempty"`        // For npm dist-tags like latest, beta, etc.
-	PublishConfig    map[string]interface{} `json:"publishConfig,omitempty"`    // For npm publish configuration
-	Time             interface{}            `json:"time,omitempty"`             // For version timestamps
-	Homepage         string                 `json:"homepage,omitempty"`         // Project homepage URL
-	Bugs             interface{}            `json:"bugs,omitempty"`             // Issue tracker details
-	Scripts          map[string]string      `json:"scripts,omitempty"`          // NPM scripts
-	Contributors     interface{}            `json:"contributors,omitempty"`     // Can be array of strings or objects
-	Engines          map[string]string      `json:"engines,omitempty"`          // Engine compatibility
-	PeerDependencies map[string]string      `json:"peerDependencies,omitempty"` // Peer dependencies
-	Deprecated       string                 `json:"deprecated,omitempty"`       // Deprecation message
-}
+// Types are now defined in types.go to avoid duplication
 
 // New creates a new npm registry handler
 func New(storage storage.BlobStorage, db *common.Database) *Registry {

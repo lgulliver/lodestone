@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"time"
 
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/storage"
@@ -16,22 +15,6 @@ import (
 type Registry struct {
 	storage storage.BlobStorage
 	db      *common.Database
-}
-
-// GoModInfo represents Go module information
-type GoModInfo struct {
-	Version string    `json:"Version"`
-	Time    time.Time `json:"Time"`
-	Origin  *GoOrigin `json:"Origin,omitempty"`
-}
-
-// GoOrigin represents information about the source of a Go module
-type GoOrigin struct {
-	VCS    string `json:"VCS"`
-	URL    string `json:"URL"`
-	Subdir string `json:"Subdir,omitempty"`
-	Ref    string `json:"Ref,omitempty"`
-	Hash   string `json:"Hash,omitempty"`
 }
 
 // New creates a new Go registry handler

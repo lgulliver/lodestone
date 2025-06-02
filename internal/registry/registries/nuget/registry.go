@@ -23,107 +23,7 @@ type Registry struct {
 	db      *common.Database
 }
 
-// NuspecMetadata represents the metadata from a .nuspec file
-type NuspecMetadata struct {
-	XMLName  xml.Name `xml:"package"`
-	Metadata Metadata `xml:"metadata"`
-	Files    []File   `xml:"files>file,omitempty"`
-}
-
-// Metadata represents the metadata section of a .nuspec file
-type Metadata struct {
-	ID                       string              `xml:"id"`
-	Version                  string              `xml:"version"`
-	Title                    string              `xml:"title,omitempty"`
-	Authors                  string              `xml:"authors"`
-	Owners                   string              `xml:"owners,omitempty"`
-	Description              string              `xml:"description"`
-	Summary                  string              `xml:"summary,omitempty"`
-	ReleaseNotes             string              `xml:"releaseNotes,omitempty"`
-	Copyright                string              `xml:"copyright,omitempty"`
-	Language                 string              `xml:"language,omitempty"`
-	ProjectURL               string              `xml:"projectUrl,omitempty"`
-	IconURL                  string              `xml:"iconUrl,omitempty"`
-	LicenseURL               string              `xml:"licenseUrl,omitempty"`
-	Tags                     string              `xml:"tags,omitempty"`
-	RequireLicenseAcceptance bool                `xml:"requireLicenseAcceptance,omitempty"`
-	DevelopmentDependency    bool                `xml:"developmentDependency,omitempty"`
-	Dependencies             *Dependencies       `xml:"dependencies,omitempty"`
-	FrameworkAssemblies      []FrameworkAssembly `xml:"frameworkAssemblies>frameworkAssembly,omitempty"`
-	References               []Reference         `xml:"references>reference,omitempty"`
-	MinClientVersion         string              `xml:"minClientVersion,omitempty"`
-	PackageTypes             []PackageType       `xml:"packageTypes>packageType,omitempty"`
-	Repository               *Repository         `xml:"repository,omitempty"`
-	License                  *License            `xml:"license,omitempty"`
-	Icon                     string              `xml:"icon,omitempty"`
-	Readme                   string              `xml:"readme,omitempty"`
-	TargetFrameworks         []TargetFramework   `xml:"metadata>targetFramework,omitempty"`
-}
-
-// Dependencies represents package dependencies
-type Dependencies struct {
-	Groups []DependencyGroup `xml:"group,omitempty"`
-	// For packages without groups, dependencies are direct children
-	Dependencies []Dependency `xml:"dependency,omitempty"`
-}
-
-// DependencyGroup represents a group of dependencies for a specific framework
-type DependencyGroup struct {
-	TargetFramework string       `xml:"targetFramework,attr,omitempty"`
-	Dependencies    []Dependency `xml:"dependency,omitempty"`
-}
-
-// Dependency represents a single package dependency
-type Dependency struct {
-	ID      string `xml:"id,attr"`
-	Version string `xml:"version,attr,omitempty"`
-	Include string `xml:"include,attr,omitempty"`
-	Exclude string `xml:"exclude,attr,omitempty"`
-}
-
-// FrameworkAssembly represents a framework assembly reference
-type FrameworkAssembly struct {
-	AssemblyName    string `xml:"assemblyName,attr"`
-	TargetFramework string `xml:"targetFramework,attr,omitempty"`
-}
-
-// Reference represents a reference
-type Reference struct {
-	File string `xml:"file,attr"`
-}
-
-// PackageType represents the type of package
-type PackageType struct {
-	Name    string `xml:"name,attr"`
-	Version string `xml:"version,attr,omitempty"`
-}
-
-// Repository represents repository information
-type Repository struct {
-	Type   string `xml:"type,attr,omitempty"`
-	URL    string `xml:"url,attr,omitempty"`
-	Branch string `xml:"branch,attr,omitempty"`
-	Commit string `xml:"commit,attr,omitempty"`
-}
-
-// License represents license information
-type License struct {
-	Type       string `xml:"type,attr,omitempty"`
-	Version    string `xml:"version,attr,omitempty"`
-	Expression string `xml:",chardata"`
-}
-
-// File represents a file in the package
-type File struct {
-	Src     string `xml:"src,attr"`
-	Target  string `xml:"target,attr,omitempty"`
-	Exclude string `xml:"exclude,attr,omitempty"`
-}
-
-// TargetFramework represents target framework information
-type TargetFramework struct {
-	Moniker string `xml:",chardata"`
-}
+// Types are now defined in types.go to avoid duplication
 
 // New creates a new NuGet registry handler
 func New(storage storage.BlobStorage, db *common.Database) *Registry {
@@ -455,7 +355,7 @@ func (r *Registry) GetMetadata(content []byte) (map[string]interface{}, error) {
 }
 
 // extractNuspecFromNupkg extracts and parses the .nuspec file from a .nupkg package
-func extractNuspecFromNupkg(nupkgData []byte) (*NuspecMetadata, error) {
+func extractNuspecFromNupkg(nupkgData []byte) (*NuSpec, error) {
 	// Create a bytes reader for the zip content
 	reader := bytes.NewReader(nupkgData)
 
@@ -482,7 +382,7 @@ func extractNuspecFromNupkg(nupkgData []byte) (*NuspecMetadata, error) {
 			}
 
 			// Parse the .nuspec XML
-			var nuspec NuspecMetadata
+			var nuspec NuSpec
 			if err := xml.Unmarshal(nuspecBytes, &nuspec); err != nil {
 				return nil, fmt.Errorf("failed to parse .nuspec XML: %w", err)
 			}

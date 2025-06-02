@@ -17,19 +17,7 @@ type Registry struct {
 	db      *common.Database
 }
 
-// CargoManifest represents Cargo.toml structure
-type CargoManifest struct {
-	Package struct {
-		Name        string   `toml:"name"`
-		Version     string   `toml:"version"`
-		Authors     []string `toml:"authors"`
-		Description string   `toml:"description"`
-		Keywords    []string `toml:"keywords"`
-		Categories  []string `toml:"categories"`
-		License     string   `toml:"license"`
-		Repository  string   `toml:"repository"`
-	} `toml:"package"`
-}
+// Types are now defined in types.go to avoid duplication
 
 // New creates a new Cargo registry handler
 func New(storage storage.BlobStorage, db *common.Database) *Registry {

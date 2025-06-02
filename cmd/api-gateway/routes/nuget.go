@@ -22,21 +22,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// NuSpecMetadata represents the metadata in a .nuspec file
-type NuSpecMetadata struct {
-	ID      string `xml:"id"`
-	Version string `xml:"version"`
-	Title   string `xml:"title"`
-	Authors string `xml:"authors"`
-	Owners  string `xml:"owners"`
-}
-
-// NuSpec represents the structure of a .nuspec file
-type NuSpec struct {
-	XMLName  xml.Name       `xml:"package"`
-	Metadata NuSpecMetadata `xml:"metadata"`
-}
-
 // extractNuGetPackageInfo extracts package name and version from .nupkg file contents
 func extractNuGetPackageInfo(fileContent []byte) (string, string, error) {
 	// Create a byte reader for the zip content
@@ -63,7 +48,7 @@ func extractNuGetPackageInfo(fileContent []byte) (string, string, error) {
 				return "", "", fmt.Errorf("failed to read nuspec content: %w", err)
 			}
 
-			var nuspec NuSpec
+			var nuspec nuget.NuSpec
 			err = xml.Unmarshal(nuspecContent, &nuspec)
 			if err != nil {
 				return "", "", fmt.Errorf("failed to parse nuspec XML: %w", err)
@@ -868,7 +853,7 @@ func extractSymbolPackageInfo(fileContent []byte) (string, string, error) {
 				return "", "", fmt.Errorf("failed to read nuspec content: %w", err)
 			}
 
-			var nuspec NuSpec
+			var nuspec nuget.NuSpec
 			err = xml.Unmarshal(nuspecContent, &nuspec)
 			if err != nil {
 				return "", "", fmt.Errorf("failed to parse nuspec XML: %w", err)

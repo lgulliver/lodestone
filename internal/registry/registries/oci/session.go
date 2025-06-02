@@ -7,33 +7,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/rs/zerolog/log"
 )
-
-// UploadSession represents an active blob upload session
-type UploadSession struct {
-	ID         string
-	Repository string
-	UserID     string
-	StartedAt  time.Time
-	LastUpdate time.Time
-	Size       int64
-	Digest     string
-	TempPath   string
-	mu         sync.RWMutex
-}
-
-// SessionManager manages blob upload sessions
-type SessionManager struct {
-	sessions map[string]*UploadSession
-	storage  storage.BlobStorage
-	mu       sync.RWMutex
-}
 
 // NewSessionManager creates a new session manager
 func NewSessionManager(storage storage.BlobStorage) *SessionManager {
