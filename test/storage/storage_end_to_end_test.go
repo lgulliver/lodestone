@@ -148,7 +148,7 @@ func setupTestServiceE2E(t *testing.T, testDir string) (*registry.Service, uuid.
 	sqlDB.SetMaxIdleConns(1)
 
 	// Use GORM AutoMigrate instead of raw SQL
-	err = db.AutoMigrate(&types.User{}, &types.Artifact{})
+	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{})
 	if err != nil {
 		t.Fatal("Failed to migrate database:", err)
 	}

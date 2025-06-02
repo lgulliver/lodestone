@@ -59,7 +59,7 @@ func setupTestDB(t *testing.T) *common.Database {
 	require.NoError(t, err)
 
 	// Auto migrate tables
-	err = db.AutoMigrate(&types.User{}, &types.Artifact{})
+	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{})
 	require.NoError(t, err)
 
 	return &common.Database{DB: db}

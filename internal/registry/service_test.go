@@ -96,7 +96,7 @@ func setupTestDB(t *testing.T) *common.Database {
 	require.NoError(t, err)
 
 	// Auto migrate tables
-	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{})
+	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{})
 	require.NoError(t, err)
 
 	return &common.Database{DB: db}
@@ -396,11 +396,15 @@ func TestDelete_Success(t *testing.T) {
 	}
 	require.NoError(t, db.Create(artifact).Error)
 
+	// Establish package ownership for the user
+	err := service.Ownership.EstablishInitialOwnership(ctx, "npm", "test-package", user.ID)
+	require.NoError(t, err)
+
 	// Mock storage deletion
 	mockStorage.On("Delete", ctx, "npm/test-package/1.0.0/artifact").Return(nil)
 
 	// Delete artifact
-	err := service.Delete(ctx, "npm", "test-package", "1.0.0", user.ID)
+	err = service.Delete(ctx, "npm", "test-package", "1.0.0", user.ID)
 
 	assert.NoError(t, err)
 

@@ -18,18 +18,20 @@ import (
 
 // Service handles registry operations
 type Service struct {
-	DB       *common.Database
-	Storage  storage.BlobStorage
-	factory  *Factory
-	handlers map[string]Handler
+	DB        *common.Database
+	Storage   storage.BlobStorage
+	Ownership *OwnershipService
+	factory   *Factory
+	handlers  map[string]Handler
 }
 
 // NewService creates a new registry service
 func NewService(db *common.Database, storage storage.BlobStorage) *Service {
 	service := &Service{
-		DB:       db,
-		Storage:  storage,
-		handlers: make(map[string]Handler),
+		DB:        db,
+		Storage:   storage,
+		Ownership: NewOwnershipService(db.DB),
+		handlers:  make(map[string]Handler),
 	}
 
 	// Create registry factory
@@ -111,6 +113,30 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 		return nil, fmt.Errorf("failed to extract metadata: %w", err)
 	}
 	artifact.Metadata = metadata
+
+	// Check package ownership permissions
+	canPublish, err := s.Ownership.CanUserPublish(ctx, registryType, artifact.Name, publishedBy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check ownership permissions: %w", err)
+	}
+
+	if !canPublish {
+		// Check if this is a new package (no existing versions)
+		var existingCount int64
+		if err := s.DB.Model(&types.Artifact{}).Where("LOWER(name) = LOWER(?) AND registry = ?",
+			artifact.Name, artifact.Registry).Count(&existingCount).Error; err != nil {
+			return nil, fmt.Errorf("failed to check existing packages: %w", err)
+		}
+
+		// If package doesn't exist, establish initial ownership
+		if existingCount == 0 {
+			if err := s.Ownership.EstablishInitialOwnership(ctx, registryType, artifact.Name, publishedBy); err != nil {
+				return nil, fmt.Errorf("failed to establish package ownership: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("insufficient permissions to publish to package %s", artifact.Name)
+		}
+	}
 
 	// Check if artifact already exists
 	var existingArtifact types.Artifact
@@ -224,13 +250,13 @@ func (s *Service) Delete(ctx context.Context, registryType, name, version string
 		return fmt.Errorf("failed to get artifact: %w", err)
 	}
 
-	// Check permissions (user must be the publisher or an admin)
-	var user types.User
-	if err := s.DB.First(&user, userID).Error; err != nil {
-		return fmt.Errorf("failed to get user: %w", err)
+	// Check ownership permissions
+	canDelete, err := s.Ownership.CanUserDelete(ctx, registryType, artifact.Name, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check delete permissions: %w", err)
 	}
 
-	if artifact.PublishedBy != userID && !user.IsAdmin {
+	if !canDelete {
 		return fmt.Errorf("insufficient permissions to delete artifact")
 	}
 
@@ -262,4 +288,39 @@ func (s *Service) GetRegistry(registryType string) (Handler, error) {
 		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
 	}
 	return handler, nil
+}
+
+// GetPackageOwners returns all owners of a package
+func (s *Service) GetPackageOwners(ctx context.Context, registryType, packageName string) ([]types.PackageOwnership, error) {
+	return s.Ownership.GetPackageOwners(ctx, registryType, packageName)
+}
+
+// AddPackageOwner adds a new owner to a package
+func (s *Service) AddPackageOwner(ctx context.Context, registryType, packageName string, ownerUserID, targetUserID uuid.UUID, role string) error {
+	// Check if the requesting user can manage ownership
+	canManage, err := s.Ownership.CanUserManageOwnership(ctx, registryType, packageName, ownerUserID)
+	if err != nil {
+		return fmt.Errorf("failed to check management permissions: %w", err)
+	}
+
+	if !canManage {
+		return fmt.Errorf("insufficient permissions to manage package ownership")
+	}
+
+	return s.Ownership.AddOwner(ctx, registryType, packageName, targetUserID, ownerUserID, role)
+}
+
+// RemovePackageOwner removes an owner from a package
+func (s *Service) RemovePackageOwner(ctx context.Context, registryType, packageName string, ownerUserID, targetUserID uuid.UUID) error {
+	// Check if the requesting user can manage ownership
+	canManage, err := s.Ownership.CanUserManageOwnership(ctx, registryType, packageName, ownerUserID)
+	if err != nil {
+		return fmt.Errorf("failed to check management permissions: %w", err)
+	}
+
+	if !canManage {
+		return fmt.Errorf("insufficient permissions to manage package ownership")
+	}
+
+	return s.Ownership.RemoveOwner(ctx, registryType, packageName, targetUserID, ownerUserID)
 }

@@ -80,6 +80,7 @@ func main() {
 
 	// Set up all package format routes
 	routes.AuthRoutes(api, authService)
+	routes.PackageOwnershipRoutes(api, registryService, authService)
 	routes.NuGetRoutes(api, registryService, authService)
 	routes.NPMRoutes(api, registryService, authService)
 	routes.MavenRoutes(api, registryService, authService)

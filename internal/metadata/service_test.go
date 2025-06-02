@@ -47,7 +47,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 
 	// Auto migrate tables - note: using simplified types for SQLite compatibility
-	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &TestArtifactIndex{}, &TestDownloadEvent{})
+	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{}, &TestArtifactIndex{}, &TestDownloadEvent{})
 	require.NoError(t, err)
 
 	return db

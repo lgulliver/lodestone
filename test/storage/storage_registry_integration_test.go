@@ -81,7 +81,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run auto migrations
-	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{})
+	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{})
 	require.NoError(t, err)
 
 	commonDB := &common.Database{DB: db}
@@ -266,7 +266,7 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run auto migrations
-	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{})
+	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{})
 	require.NoError(t, err)
 
 	commonDB := &common.Database{DB: db}

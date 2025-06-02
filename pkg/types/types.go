@@ -131,6 +131,22 @@ func (p *Permission) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// PackageOwnership represents ownership of a package
+type PackageOwnership struct {
+	ID         uuid.UUID `json:"id" gorm:"primaryKey"`
+	PackageKey string    `json:"package_key" gorm:"not null;index"`
+	UserID     uuid.UUID `json:"user_id" gorm:"type:uuid;not null;index"`
+	Role       string    `json:"role" gorm:"not null"`
+	GrantedBy  uuid.UUID `json:"granted_by" gorm:"type:uuid;not null"`
+	GrantedAt  time.Time `json:"granted_at" gorm:"not null"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+
+	// Relationships
+	User          User `json:"user" gorm:"foreignKey:UserID"`
+	GrantedByUser User `json:"granted_by_user" gorm:"foreignKey:GrantedBy"`
+}
+
 // Registry interface for different artifact types
 type Registry interface {
 	// Upload stores an artifact
