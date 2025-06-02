@@ -21,9 +21,14 @@ CREATE INDEX idx_package_ownerships_user_id ON package_ownerships(user_id);
 CREATE INDEX idx_package_ownerships_role ON package_ownerships(role);
 CREATE INDEX idx_package_ownerships_package_user ON package_ownerships(package_key, user_id);
 
+-- Trigger for updated_at timestamp
+CREATE TRIGGER update_package_ownerships_updated_at BEFORE UPDATE ON package_ownerships
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- +migrate Down
 -- Drop package ownership table and indexes
 
+DROP TRIGGER IF EXISTS update_package_ownerships_updated_at ON package_ownerships;
 DROP INDEX IF EXISTS idx_package_ownerships_package_user;
 DROP INDEX IF EXISTS idx_package_ownerships_role;
 DROP INDEX IF EXISTS idx_package_ownerships_user_id;
