@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations
 var migrationsFS embed.FS
 
 func main() {
