@@ -290,6 +290,18 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 	tarballData, err := createTestNpmTarball(packageJSON)
 	require.NoError(t, err)
 
+	// Create test user
+	user := &types.User{
+		ID:       uuid.New(),
+		Username: "testuser",
+		Email:    "test@example.com",
+		Password: "hashedpassword",
+		IsActive: true,
+		IsAdmin:  false,
+	}
+	err = db.Create(user).Error
+	require.NoError(t, err)
+
 	// Test basic operation
 	ctx := context.Background()
 	artifact, err := registryService.Upload(
@@ -298,7 +310,7 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 		"factory-test-package",
 		"1.0.0",
 		bytes.NewReader(tarballData),
-		uuid.New(),
+		user.ID,
 	)
 
 	require.NoError(t, err)

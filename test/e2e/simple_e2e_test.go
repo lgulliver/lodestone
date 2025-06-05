@@ -106,16 +106,16 @@ func TestSimpleE2EWorkflow(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	// Setup test environment
-	service := setupSimpleTestEnvironment(t, testDir)
+	service, testUserID := setupSimpleTestEnvironment(t, testDir)
 
 	// Run basic workflow test
 	t.Log("Testing simple upload/download workflow...")
-	testSimpleWorkflow(t, service)
+	testSimpleWorkflow(t, service, testUserID)
 
 	t.Log("✅ Simple E2E test completed successfully!")
 }
 
-func setupSimpleTestEnvironment(t *testing.T, testDir string) *registry.Service {
+func setupSimpleTestEnvironment(t *testing.T, testDir string) (*registry.Service, uuid.UUID) {
 	// Use file-based SQLite database to avoid table sharing issues with concurrent access
 	dbPath := filepath.Join(testDir, "test.db")
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
@@ -135,43 +135,23 @@ func setupSimpleTestEnvironment(t *testing.T, testDir string) *registry.Service 
 	sqlDB.SetMaxOpenConns(1) // SQLite works best with single connection
 	sqlDB.SetMaxIdleConns(1)
 
-	// Create basic tables
-	err = db.Exec(`
-		CREATE TABLE users (
-			id TEXT PRIMARY KEY,
-			username TEXT NOT NULL,
-			email TEXT NOT NULL,
-			password TEXT NOT NULL,
-			is_active BOOLEAN DEFAULT true,
-			is_admin BOOLEAN DEFAULT false,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`).Error
+	// Use GORM AutoMigrate instead of raw SQL
+	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{})
 	if err != nil {
-		t.Fatal("Failed to create users table:", err)
+		t.Fatal("Failed to migrate database:", err)
 	}
 
-	err = db.Exec(`
-		CREATE TABLE artifacts (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			version TEXT NOT NULL,
-			registry TEXT NOT NULL,
-			storage_path TEXT NOT NULL,
-			content_type TEXT,
-			size INTEGER,
-			sha256 TEXT,
-			metadata TEXT,
-			downloads INTEGER DEFAULT 0,
-			published_by TEXT NOT NULL,
-			is_public BOOLEAN DEFAULT false,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`).Error
-	if err != nil {
-		t.Fatal("Failed to create artifacts table:", err)
+	// Create test user
+	testUser := &types.User{
+		ID:       uuid.New(),
+		Username: "testuser",
+		Email:    "test@example.com",
+		Password: "hashedpassword",
+		IsActive: true,
+		IsAdmin:  true,
+	}
+	if err := db.Create(testUser).Error; err != nil {
+		t.Fatal("Failed to create test user:", err)
 	}
 
 	// Setup storage
@@ -189,12 +169,11 @@ func setupSimpleTestEnvironment(t *testing.T, testDir string) *registry.Service 
 	commonDB := &common.Database{DB: db}
 	service := registry.NewService(commonDB, storageBackend)
 
-	return service
+	return service, testUser.ID
 }
 
-func testSimpleWorkflow(t *testing.T, service *registry.Service) {
+func testSimpleWorkflow(t *testing.T, service *registry.Service, userID uuid.UUID) {
 	ctx := context.Background()
-	userID := uuid.New()
 
 	// Test data
 	packageName := "simple-test-package"

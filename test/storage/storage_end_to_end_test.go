@@ -103,19 +103,19 @@ func TestStorageEndToEndIntegration(t *testing.T) {
 	service, testUserID := setupTestServiceE2E(t, testDir)
 
 	t.Log("1. Testing basic upload/download workflow...")
-	testBasicWorkflowE2E(t, service)
+	testBasicWorkflowE2E(t, service, testUserID)
 
 	t.Log("2. Testing storage integrity and atomic writes...")
-	testStorageIntegrityE2E(t, service)
+	testStorageIntegrityE2E(t, service, testUserID)
 
 	t.Log("3. Testing concurrent operations...")
-	testConcurrentOperationsE2E(t, service)
+	testConcurrentOperationsE2E(t, service, testUserID)
 
 	t.Log("4. Testing context cancellation...")
-	testContextCancellationE2E(t, service)
+	testContextCancellationE2E(t, service, testUserID)
 
 	t.Log("5. Testing multiple registry types...")
-	testMultipleRegistriesE2E(t, service)
+	testMultipleRegistriesE2E(t, service, testUserID)
 
 	t.Log("6. Testing deletion and cleanup...")
 	testDeletionAndCleanupE2E(t, service, testUserID)
@@ -187,9 +187,8 @@ func setupTestServiceE2E(t *testing.T, testDir string) (*registry.Service, uuid.
 	return service, testUser.ID
 }
 
-func testBasicWorkflowE2E(t *testing.T, service *registry.Service) {
+func testBasicWorkflowE2E(t *testing.T, service *registry.Service, userID uuid.UUID) {
 	ctx := context.Background()
-	userID := uuid.New()
 
 	// Test data
 	packageName := "test-package"
@@ -232,9 +231,8 @@ func testBasicWorkflowE2E(t *testing.T, service *registry.Service) {
 	t.Logf("✅ Downloaded artifact: %s@%s (Size: %d bytes)", downloadedArtifact.Name, downloadedArtifact.Version, downloadedArtifact.Size)
 }
 
-func testStorageIntegrityE2E(t *testing.T, service *registry.Service) {
+func testStorageIntegrityE2E(t *testing.T, service *registry.Service, userID uuid.UUID) {
 	ctx := context.Background()
-	userID := uuid.New()
 
 	// Test atomic writes with larger content
 	packageName := "integrity-test"
@@ -260,9 +258,8 @@ func testStorageIntegrityE2E(t *testing.T, service *registry.Service) {
 	t.Logf("✅ Storage integrity verified: %d bytes, SHA256: %s", artifact.Size, artifact.SHA256)
 }
 
-func testConcurrentOperationsE2E(t *testing.T, service *registry.Service) {
+func testConcurrentOperationsE2E(t *testing.T, service *registry.Service, userID uuid.UUID) {
 	ctx := context.Background()
-	userID := uuid.New()
 
 	const numGoroutines = 5 // Reduced for SQLite compatibility
 	const packagesPerGoroutine = 3
@@ -334,9 +331,7 @@ func testConcurrentOperationsE2E(t *testing.T, service *registry.Service) {
 	t.Logf("✅ Concurrent operations completed: %d packages uploaded and verified", len(uploaded))
 }
 
-func testContextCancellationE2E(t *testing.T, service *registry.Service) {
-	userID := uuid.New()
-
+func testContextCancellationE2E(t *testing.T, service *registry.Service, userID uuid.UUID) {
 	// Create a context that we'll cancel
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -364,9 +359,8 @@ func testContextCancellationE2E(t *testing.T, service *registry.Service) {
 	t.Logf("✅ Context cancellation handled correctly: %v", err)
 }
 
-func testMultipleRegistriesE2E(t *testing.T, service *registry.Service) {
+func testMultipleRegistriesE2E(t *testing.T, service *registry.Service, userID uuid.UUID) {
 	ctx := context.Background()
-	userID := uuid.New()
 
 	// Create a proper npm package
 	npmPackageData := map[string]interface{}{

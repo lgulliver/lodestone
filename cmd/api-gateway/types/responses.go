@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	pkgtypes "github.com/lgulliver/lodestone/pkg/types"
 )
 
 // Common HTTP response types used across all API handlers
@@ -39,7 +40,7 @@ type UploadRequest struct {
 }
 
 type DownloadResponse struct {
-	Artifact *Artifact
+	Artifact *pkgtypes.Artifact
 	Content  io.ReadCloser
 	Headers  map[string]string
 }

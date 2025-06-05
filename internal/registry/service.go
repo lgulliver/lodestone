@@ -114,6 +114,20 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	}
 	artifact.Metadata = metadata
 
+	// Check if this is a new package (no existing versions)
+	var existingCount int64
+	if err := s.DB.Model(&types.Artifact{}).Where("LOWER(name) = LOWER(?) AND registry = ?",
+		artifact.Name, artifact.Registry).Count(&existingCount).Error; err != nil {
+		return nil, fmt.Errorf("failed to check existing packages: %w", err)
+	}
+
+	// If package doesn't exist, establish initial ownership
+	if existingCount == 0 {
+		if err := s.Ownership.EstablishInitialOwnership(ctx, registryType, artifact.Name, publishedBy); err != nil {
+			return nil, fmt.Errorf("failed to establish package ownership: %w", err)
+		}
+	}
+
 	// Check package ownership permissions
 	canPublish, err := s.Ownership.CanUserPublish(ctx, registryType, artifact.Name, publishedBy)
 	if err != nil {
@@ -121,21 +135,7 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	}
 
 	if !canPublish {
-		// Check if this is a new package (no existing versions)
-		var existingCount int64
-		if err := s.DB.Model(&types.Artifact{}).Where("LOWER(name) = LOWER(?) AND registry = ?",
-			artifact.Name, artifact.Registry).Count(&existingCount).Error; err != nil {
-			return nil, fmt.Errorf("failed to check existing packages: %w", err)
-		}
-
-		// If package doesn't exist, establish initial ownership
-		if existingCount == 0 {
-			if err := s.Ownership.EstablishInitialOwnership(ctx, registryType, artifact.Name, publishedBy); err != nil {
-				return nil, fmt.Errorf("failed to establish package ownership: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("insufficient permissions to publish to package %s", artifact.Name)
-		}
+		return nil, fmt.Errorf("insufficient permissions to publish to package %s", artifact.Name)
 	}
 
 	// Check if artifact already exists
