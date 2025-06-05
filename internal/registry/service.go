@@ -21,6 +21,7 @@ type Service struct {
 	DB        *common.Database
 	Storage   storage.BlobStorage
 	Ownership *OwnershipService
+	Settings  *RegistrySettingsService
 	factory   *Factory
 	handlers  map[string]Handler
 }
@@ -31,6 +32,7 @@ func NewService(db *common.Database, storage storage.BlobStorage) *Service {
 		DB:        db,
 		Storage:   storage,
 		Ownership: NewOwnershipService(db.DB),
+		Settings:  NewRegistrySettingsService(db.DB),
 		handlers:  make(map[string]Handler),
 	}
 
@@ -70,6 +72,17 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 		Str("version", version).
 		Str("published_by", publishedBy.String()).
 		Msg("Starting artifact upload")
+
+	// Check if registry is enabled
+	enabled, err := s.Settings.IsRegistryEnabled(ctx, registryType)
+	if err != nil {
+		log.Error().Err(err).Str("registry_type", registryType).Msg("Failed to check registry status")
+		return nil, fmt.Errorf("failed to check registry status: %w", err)
+	}
+	if !enabled {
+		log.Warn().Str("registry_type", registryType).Msg("Upload rejected - registry is disabled")
+		return nil, fmt.Errorf("registry %s is currently disabled", registryType)
+	}
 
 	// Get registry handler
 	handler, exists := s.handlers[registryType]
@@ -168,6 +181,15 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 	// Check if registry type is supported
 	if _, exists := s.handlers[registryType]; !exists {
 		return nil, nil, fmt.Errorf("unsupported registry type: %s", registryType)
+	}
+
+	// Check if registry is enabled
+	enabled, err := s.Settings.IsRegistryEnabled(ctx, registryType)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to check registry status: %w", err)
+	}
+	if !enabled {
+		return nil, nil, fmt.Errorf("registry %s is currently disabled", registryType)
 	}
 
 	// Get artifact metadata from database

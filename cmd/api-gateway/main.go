@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 
+	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
 	"github.com/lgulliver/lodestone/cmd/api-gateway/routes"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/internal/common"
@@ -48,6 +49,9 @@ func main() {
 	authService := auth.NewService(database, cache, &cfg.Auth)
 	registryService := registry.NewService(database, storageBackend)
 
+	// Initialize registry settings service for runtime control
+	registrySettingsService := registry.NewRegistrySettingsService(database.DB)
+
 	// Set up Gin router
 	router := gin.Default()
 
@@ -78,17 +82,22 @@ func main() {
 	// API routes
 	api := router.Group("/api/v1")
 
-	// Set up all package format routes
+	// Add registry validation middleware to all package format routes
+	packageRoutes := api.Group("")
+	packageRoutes.Use(middleware.RegistryValidationMiddleware(registrySettingsService))
+
+	// Set up all package format routes with registry validation
 	routes.AuthRoutes(api, authService)
+	routes.AdminRoutes(api, registryService, authService) // Admin routes without registry validation
 	routes.PackageOwnershipRoutes(api, registryService, authService)
-	routes.NuGetRoutes(api, registryService, authService)
-	routes.NPMRoutes(api, registryService, authService)
-	routes.MavenRoutes(api, registryService, authService)
-	routes.GoRoutes(api, registryService, authService)
-	routes.HelmRoutes(api, registryService, authService)
-	routes.CargoRoutes(api, registryService, authService)
-	routes.RubyGemsRoutes(api, registryService, authService)
-	routes.OPARoutes(api, registryService, authService)
+	routes.NuGetRoutes(packageRoutes, registryService, authService)
+	routes.NPMRoutes(packageRoutes, registryService, authService)
+	routes.MavenRoutes(packageRoutes, registryService, authService)
+	routes.GoRoutes(packageRoutes, registryService, authService)
+	routes.HelmRoutes(packageRoutes, registryService, authService)
+	routes.CargoRoutes(packageRoutes, registryService, authService)
+	routes.RubyGemsRoutes(packageRoutes, registryService, authService)
+	routes.OPARoutes(packageRoutes, registryService, authService)
 
 	// OCI/Docker registry routes need to be at root level for Docker CLI compatibility
 	routes.OCIRootRoutes(router, registryService, authService)

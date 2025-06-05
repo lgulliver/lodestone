@@ -147,6 +147,36 @@ type PackageOwnership struct {
 	GrantedByUser User `json:"granted_by_user" gorm:"foreignKey:GrantedBy"`
 }
 
+// BeforeCreate generates a UUID for the package ownership ID
+func (p *PackageOwnership) BeforeCreate(tx *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
+}
+
+// RegistrySetting represents runtime configuration for package format registries
+type RegistrySetting struct {
+	ID           uuid.UUID  `json:"id" gorm:"primaryKey"`
+	RegistryName string     `json:"registry_name" gorm:"uniqueIndex;not null"`
+	Enabled      bool       `json:"enabled" gorm:"not null;default:true"`
+	Description  string     `json:"description"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	UpdatedBy    *uuid.UUID `json:"updated_by" gorm:"type:uuid"`
+
+	// Relationships
+	UpdatedByUser *User `json:"updated_by_user" gorm:"foreignKey:UpdatedBy"`
+}
+
+// BeforeCreate generates a UUID for the registry setting ID
+func (r *RegistrySetting) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
+	}
+	return nil
+}
+
 // Registry interface for different artifact types
 type Registry interface {
 	// Upload stores an artifact
