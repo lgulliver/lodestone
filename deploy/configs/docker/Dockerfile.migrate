@@ -34,6 +34,9 @@ WORKDIR /home/lodestone/
 # Copy the binary from builder stage
 COPY --from=builder /app/migrate ./migrate
 
+# Copy migrations from the root migrations folder
+COPY migrations/ /app/migrations/
+
 # Make binary executable
 RUN chmod +x ./migrate
 
