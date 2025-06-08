@@ -1,3 +1,5 @@
+> **⚠️ Lodestone is a work in progress and not yet feature complete. Expect breaking changes and incomplete functionality. Contributions and feedback are welcome!**
+
 # Lodestone - Self-Hosted Artifact Feed
 
 Lodestone is an open-source, self-hosted artifact feed that supports multiple package formats with a modern web UI. It's designed to run on Kubernetes and provides secure authentication for both publishing and consuming artifacts.
