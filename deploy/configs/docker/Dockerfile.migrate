@@ -1,0 +1,47 @@
+# Multi-stage build for Lodestone migration tool
+FROM golang:1.24-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the migration binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o migrate ./cmd/migrate
+
+# Final stage
+FROM alpine:latest
+
+# Install ca-certificates for SSL connections
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create non-root user
+RUN adduser -D -s /bin/sh lodestone
+
+# Set working directory
+WORKDIR /home/lodestone/
+
+# Copy the binary from builder stage
+COPY --from=builder /app/migrate ./migrate
+
+# Copy migrations from the root migrations folder
+COPY cmd/migrate/migrations/ /app/migrations/
+
+# Make binary executable
+RUN chmod +x ./migrate
+
+# Switch to non-root user
+USER lodestone
+
+# Command to run migrations
+ENTRYPOINT ["./migrate"]

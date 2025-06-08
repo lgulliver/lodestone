@@ -1,0 +1,54 @@
+# Multi-stage build for Go services
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies including git for private modules
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
+
+# Copy go mod files first for better Docker layer caching
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build the API gateway with optimizations
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -a -installsuffix cgo \
+    -ldflags='-w -s -extldflags "-static"' \
+    -o bin/api-gateway \
+    ./cmd/api-gateway
+
+# Final stage - minimal runtime image
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates tzdata wget \
+    && update-ca-certificates
+
+# Create directory structure
+WORKDIR /app
+
+# Create artifacts directory with proper permissions
+RUN mkdir -p /app/artifacts && chmod 755 /app/artifacts
+
+# Copy binary from builder
+COPY --from=builder /app/bin/api-gateway .
+
+# Create non-root user with specific UID/GID for security
+RUN addgroup -g 1001 appgroup \
+    && adduser -D -u 1001 -G appgroup appuser \
+    && chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+# Use exec form for better signal handling
+CMD ["./api-gateway"]
