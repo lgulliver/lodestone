@@ -219,6 +219,19 @@ func addFieldIfExists(target gin.H, source map[string]interface{}, sourceKey, ta
 	}
 }
 
+// GetNPMPackageInfo godoc
+//
+//	@Summary		Get npm package information
+//	@Description	Retrieve package metadata including all versions, dist-tags, and timing information
+//	@Tags			npm
+//	@Produce		json
+//	@Param			name	path		string	true	"Package name"
+//	@Success		200		{object}	object{name=string,versions=object,dist-tags=object,time=object,modified=string}	"Package information retrieved successfully"
+//	@Failure		400		{object}	object{error=string}	"Invalid request - package name required"
+//	@Failure		404		{object}	object{error=string}	"Package not found"
+//	@Failure		500		{object}	object{error=string}	"Failed to get package info"
+//	@Security		BearerAuth
+//	@Router			/npm/{name} [get]
 func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		packageName := c.Param("name")
@@ -510,6 +523,21 @@ func handleNPMScopedDownload(registryService *registry.Service) gin.HandlerFunc 
 	}
 }
 
+// PublishNPMPackage godoc
+//
+//	@Summary		Publish npm package
+//	@Description	Upload a new npm package or new version of an existing package
+//	@Tags			npm
+//	@Accept			json
+//	@Produce		json
+//	@Param			name	path		string	true	"Package name"
+//	@Param			package	body		object	true	"npm package data with _attachments containing base64-encoded tarball"
+//	@Success		201		{object}	object{ok=boolean,id=string,rev=string}	"Package published successfully"
+//	@Failure		400		{object}	object{error=string}	"Invalid request body or package data"
+//	@Failure		401		{object}	object{error=string}	"Unauthorized"
+//	@Failure		500		{object}	object{error=string}	"Upload failed"
+//	@Security		BearerAuth
+//	@Router			/npm/{name} [put]
 func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)

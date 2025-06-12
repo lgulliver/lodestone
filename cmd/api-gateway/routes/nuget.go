@@ -98,6 +98,13 @@ func NuGetRoutes(api *gin.RouterGroup, registryService *registry.Service, authSe
 	nuget.GET("/v3/registration/:id/index.json", middleware.OptionalAuthMiddleware(authService), handleNuGetPackageMetadata(registryService))
 }
 
+// @Summary Get NuGet service index
+// @Description Get NuGet v3 service index with API endpoints and capabilities
+// @Tags NuGet
+// @Produce json
+// @Router /api/v1/nuget/v3/index.json [get]
+// @Success 200 {object} map[string]interface{} "NuGet service index with resource endpoints"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleNuGetServiceIndex() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// NuGet v3 Service Index response
@@ -162,6 +169,16 @@ func handleNuGetServiceIndex() gin.HandlerFunc {
 	}
 }
 
+// @Summary Get package versions
+// @Description Get list of available versions for a NuGet package
+// @Tags NuGet
+// @Produce json
+// @Param id path string true "Package ID"
+// @Router /api/v1/nuget/v3-flatcontainer/{id}/index.json [get]
+// @Success 200 {object} map[string]interface{} "List of package versions"
+// @Failure 400 {object} types.APIResponse "Bad request - package ID required"
+// @Failure 404 {object} types.APIResponse "Package not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleNuGetPackageVersions(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		packageID := c.Param("id")
@@ -194,6 +211,20 @@ func handleNuGetPackageVersions(registryService *registry.Service) gin.HandlerFu
 	}
 }
 
+// @Summary Download NuGet package
+// @Description Download a specific version of a NuGet package (.nupkg file)
+// @Tags NuGet
+// @Security BearerAuth
+// @Produce application/zip
+// @Param id path string true "Package ID"
+// @Param version path string true "Package version"
+// @Param filename path string true "Package filename (typically {id}.{version}.nupkg)"
+// @Router /api/v1/nuget/v3-flatcontainer/{id}/{version}/{filename} [get]
+// @Success 200 {file} file "NuGet package file (.nupkg)"
+// @Failure 400 {object} types.APIResponse "Bad request - missing required parameters"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Package not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleNuGetDownload(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		packageID := c.Param("id")
@@ -231,6 +262,18 @@ func handleNuGetDownload(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Upload NuGet package
+// @Description Upload a new NuGet package (.nupkg file) to the registry
+// @Tags NuGet
+// @Security BearerAuth
+// @Accept multipart/form-data,application/octet-stream
+// @Produce json
+// @Param package formData file false "NuGet package file (.nupkg) for multipart uploads"
+// @Router /api/v1/nuget/v2/package [put]
+// @Success 201 {object} types.APIResponse "Package uploaded successfully"
+// @Failure 400 {object} types.APIResponse "Bad request - invalid package format"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
@@ -353,6 +396,20 @@ func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete NuGet package
+// @Description Delete a specific version of a NuGet package from the registry
+// @Tags NuGet
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Package ID"
+// @Param version path string true "Package version"
+// @Router /api/v1/nuget/v2/package/{id}/{version} [delete]
+// @Success 200 {object} types.APIResponse "Package deleted successfully"
+// @Failure 400 {object} types.APIResponse "Bad request - package ID and version required"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 403 {object} types.APIResponse "Forbidden - insufficient permissions"
+// @Failure 404 {object} types.APIResponse "Package not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleNuGetDelete(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
@@ -384,6 +441,16 @@ func handleNuGetDelete(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Search NuGet packages
+// @Description Search for NuGet packages in the registry with optional filtering
+// @Tags NuGet
+// @Produce json
+// @Param q query string false "Search query (package name or keywords)"
+// @Param skip query int false "Number of results to skip (default: 0)"
+// @Param take query int false "Number of results to return (default: 20, max: 100)"
+// @Router /api/v1/nuget/v3/search [get]
+// @Success 200 {object} map[string]interface{} "Search results with package list"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleNuGetSearch(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := c.Query("q")
@@ -440,6 +507,16 @@ func handleNuGetSearch(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get package metadata
+// @Description Get detailed metadata and registration information for a NuGet package
+// @Tags NuGet
+// @Produce json
+// @Param id path string true "Package ID"
+// @Router /api/v1/nuget/v3/registration/{id}/index.json [get]
+// @Success 200 {object} map[string]interface{} "Package registration with metadata and version catalog"
+// @Failure 400 {object} types.APIResponse "Bad request - package ID required"
+// @Failure 404 {object} types.APIResponse "Package not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		packageID := c.Param("id")
@@ -545,6 +622,18 @@ func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFu
 	}
 }
 
+// @Summary Upload NuGet symbol package
+// @Description Upload a NuGet symbol package (.snupkg file) containing debugging symbols
+// @Tags NuGet
+// @Security BearerAuth
+// @Accept multipart/form-data,application/octet-stream
+// @Produce json
+// @Param package formData file false "NuGet symbol package file (.snupkg) for multipart uploads"
+// @Router /api/v1/nuget/v2/symbolpackage [put]
+// @Success 201 {object} types.APIResponse "Symbol package uploaded successfully"
+// @Failure 400 {object} types.APIResponse "Bad request - invalid symbol package format"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 // handleNuGetSymbolUpload handles symbol package uploads (.snupkg files)
 func handleNuGetSymbolUpload(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -671,6 +760,20 @@ func handleNuGetSymbolUpload(registryService *registry.Service) gin.HandlerFunc 
 	}
 }
 
+// @Summary Download NuGet symbol package
+// @Description Download a NuGet symbol package (.snupkg file) containing debugging symbols
+// @Tags NuGet
+// @Security BearerAuth
+// @Produce application/zip
+// @Param id path string true "Package ID"
+// @Param version path string true "Package version"
+// @Param filename path string true "Symbol package filename (typically {id}.{version}.snupkg)"
+// @Router /api/v1/nuget/symbols/{id}/{version}/{filename} [get]
+// @Success 200 {file} file "NuGet symbol package file (.snupkg)"
+// @Failure 400 {object} types.APIResponse "Bad request - not a symbol package file"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Symbol package not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 // handleNuGetSymbolDownload handles symbol package downloads
 func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {

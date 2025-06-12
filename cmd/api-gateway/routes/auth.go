@@ -28,6 +28,18 @@ func AuthRoutes(api *gin.RouterGroup, authService *auth.Service) {
 	authenticated.DELETE("/api-keys/:id", handleRevokeAPIKey(authService))
 }
 
+// Register godoc
+//
+//	@Summary		Register a new user
+//	@Description	Create a new user account in the system
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			user	body		types.RegisterRequest	true	"User registration information"
+//	@Success		201		{object}	object{user=object{id=string,username=string,email=string}}	"User created successfully"
+//	@Failure		400		{object}	object{error=string}	"Invalid request body"
+//	@Failure		500		{object}	object{error=string}	"Registration failed"
+//	@Router			/auth/register [post]
 func handleRegister(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")
@@ -80,6 +92,18 @@ func handleRegister(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// Login godoc
+//
+//	@Summary		User login
+//	@Description	Authenticate user and return JWT token
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			credentials	body		types.LoginRequest	true	"User login credentials"
+//	@Success		200			{object}	object{token=string,user=object{id=string}}	"Login successful"
+//	@Failure		400			{object}	object{error=string}	"Invalid request body"
+//	@Failure		401			{object}	object{error=string}	"Invalid credentials"
+//	@Router			/auth/login [post]
 func handleLogin(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req types.LoginRequest
@@ -105,6 +129,20 @@ func handleLogin(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// CreateAPIKey godoc
+//
+//	@Summary		Create a new API key
+//	@Description	Generate a new API key for the authenticated user
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			api_key	body		object{name=string,permissions=[]string}	true	"API key creation request"
+//	@Success		201		{object}	object{api_key=object{},key=string}	"API key created successfully"
+//	@Failure		400		{object}	object{error=string}	"Invalid request body"
+//	@Failure		401		{object}	object{error=string}	"Unauthorized"
+//	@Failure		500		{object}	object{error=string}	"Failed to create API key"
+//	@Security		BearerAuth
+//	@Router			/auth/api-keys [post]
 func handleCreateAPIKey(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
@@ -138,6 +176,17 @@ func handleCreateAPIKey(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// ListAPIKeys godoc
+//
+//	@Summary		List user's API keys
+//	@Description	Get all API keys for the authenticated user
+//	@Tags			Authentication
+//	@Produce		json
+//	@Success		200	{object}	object{api_keys=[]object}	"List of API keys"
+//	@Failure		401	{object}	object{error=string}	"Unauthorized"
+//	@Failure		500	{object}	object{error=string}	"Failed to list API keys"
+//	@Security		BearerAuth
+//	@Router			/auth/api-keys [get]
 func handleListAPIKeys(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
@@ -160,6 +209,19 @@ func handleListAPIKeys(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// RevokeAPIKey godoc
+//
+//	@Summary		Revoke an API key
+//	@Description	Delete an API key for the authenticated user
+//	@Tags			Authentication
+//	@Produce		json
+//	@Param			id	path		string	true	"API Key ID"
+//	@Success		200	{object}	object{message=string}	"API key revoked successfully"
+//	@Failure		400	{object}	object{error=string}	"Invalid API key ID"
+//	@Failure		401	{object}	object{error=string}	"Unauthorized"
+//	@Failure		500	{object}	object{error=string}	"Failed to revoke API key"
+//	@Security		BearerAuth
+//	@Router			/auth/api-keys/{id} [delete]
 func handleRevokeAPIKey(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)

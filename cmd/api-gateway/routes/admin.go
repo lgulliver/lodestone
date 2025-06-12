@@ -57,7 +57,18 @@ func adminOnlyMiddleware() gin.HandlerFunc {
 	}
 }
 
-// getRegistrySettings returns all registry settings
+// GetRegistrySettings godoc
+//
+//	@Summary		Get all registry settings
+//	@Description	Retrieve configuration settings for all supported registry formats
+//	@Tags			Admin
+//	@Produce		json
+//	@Success		200	{object}	types.APIResponse{data=[]object}	"Registry settings retrieved successfully"
+//	@Failure		401	{object}	types.APIResponse	"Unauthorized"
+//	@Failure		403	{object}	types.APIResponse	"Admin privileges required"
+//	@Failure		500	{object}	types.APIResponse	"Failed to retrieve registry settings"
+//	@Security		BearerAuth
+//	@Router			/admin/registries [get]
 func getRegistrySettings(settingsService *registry.RegistrySettingsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		settings, err := settingsService.GetRegistrySettings(c.Request.Context())
@@ -77,7 +88,19 @@ func getRegistrySettings(settingsService *registry.RegistrySettingsService) gin.
 	}
 }
 
-// getRegistrySetting returns a specific registry setting
+// GetRegistrySetting godoc
+//
+//	@Summary		Get specific registry setting
+//	@Description	Retrieve configuration settings for a specific registry format
+//	@Tags			Admin
+//	@Produce		json
+//	@Param			registry	path		string	true	"Registry name (e.g., npm, nuget, maven)"
+//	@Success		200			{object}	types.APIResponse{data=object}	"Registry setting retrieved successfully"
+//	@Failure		401			{object}	types.APIResponse	"Unauthorized"
+//	@Failure		403			{object}	types.APIResponse	"Admin privileges required"
+//	@Failure		404			{object}	types.APIResponse	"Registry not found"
+//	@Security		BearerAuth
+//	@Router			/admin/registries/{registry} [get]
 func getRegistrySetting(settingsService *registry.RegistrySettingsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		registryName := c.Param("registry")

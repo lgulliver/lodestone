@@ -4,7 +4,7 @@
 
 # Build variables
 BINARY_DIR := bin
-SERVICES := api-gateway auth-service registry-service metadata-service
+SERVICES := api-gateway
 GO_VERSION := 1.24.3
 DOCKER_REGISTRY := lodestone
 
@@ -60,6 +60,29 @@ migrate-down: ## Roll back the last migration (standalone)
 	@go run ./cmd/migrate -down
 	@echo "Rollback complete!"
 
+# Database operations with explicit connection
+migrate-dev-up: ## Run database migrations with dev settings
+	@echo "Running database migrations with dev settings..."
+	@export DB_HOST="localhost" && \
+	export DB_PORT="5432" && \
+	export DB_USER="lodestone" && \
+	export DB_PASSWORD="lodestone" && \
+	export DB_NAME="lodestone" && \
+	export DB_SSLMODE="disable" && \
+	go run ./cmd/migrate -up
+	@echo "Migrations complete!"
+
+migrate-dev-down: ## Roll back migrations with dev settings  
+	@echo "Rolling back last migration with dev settings..."
+	@export DB_HOST="localhost" && \
+	export DB_PORT="5432" && \
+	export DB_USER="lodestone" && \
+	export DB_PASSWORD="lodestone" && \
+	export DB_NAME="lodestone" && \
+	export DB_SSLMODE="disable" && \
+	go run ./cmd/migrate -down
+	@echo "Rollback complete!"
+
 migrate-build: ## Build migration tool
 	@echo "Building migration tool..."
 	@mkdir -p $(BINARY_DIR)
@@ -83,14 +106,6 @@ deploy-migrate-prod: ## Deploy production environment with migrations
 	@./deploy/scripts/deploy.sh up prod
 
 # Migration commands for deployment environments
-migrate-dev-up: ## Run migrations in dev environment
-	@echo "Running migrations in dev environment..."
-	@./deploy/scripts/deploy.sh migrate-up dev
-
-migrate-dev-down: ## Roll back migrations in dev environment
-	@echo "Rolling back migrations in dev environment..."
-	@./deploy/scripts/deploy.sh migrate-down dev
-
 migrate-prod-up: ## Run migrations in production environment
 	@echo "Running migrations in production environment..."
 	@./deploy/scripts/deploy.sh migrate-up prod
@@ -125,6 +140,22 @@ deps: ## Download dependencies
 run: build-api-gateway ## Run API gateway locally
 	@echo "Starting API gateway..."
 	@./$(BINARY_DIR)/api-gateway
+
+# Run the API gateway locally with development settings
+run-dev: build-api-gateway ## Run API gateway locally with dev environment
+	@echo "Starting API gateway with development settings..."
+	@export DATABASE_URL="postgres://lodestone:lodestone@localhost:5432/lodestone?sslmode=disable" && \
+	export REDIS_URL="redis://localhost:6379" && \
+	export JWT_SECRET="dev-secret-key-change-in-production" && \
+	export PORT="8080" && \
+	export LOG_LEVEL="debug" && \
+	export STORAGE_TYPE="local" && \
+	export STORAGE_LOCAL_PATH="./storage" && \
+	./$(BINARY_DIR)/api-gateway
+
+# Run with Swagger docs generation
+run-swagger: swagger run-dev ## Generate Swagger docs and run API gateway
+	@echo "API running with Swagger UI available at http://localhost:8080/swagger/index.html"
 
 # Development setup with Docker Compose
 dev: ## Start development environment with Docker Compose
@@ -171,11 +202,8 @@ undeploy: ## Remove from Kubernetes
 # Generate Swagger documentation
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
-	@if command -v swag >/dev/null 2>&1; then \
-		swag init -g cmd/api-gateway/main.go -o api/swagger; \
-	else \
-		echo "swag not installed. Install with: go install github.com/swaggo/swag/cmd/swag@latest"; \
-	fi
+	@go run github.com/swaggo/swag/cmd/swag@latest init -g cmd/api-gateway/main.go -o docs --parseDependency --parseInternal
+	@echo "Swagger documentation generated in docs/"
 
 # Security scan
 security: ## Run security scan

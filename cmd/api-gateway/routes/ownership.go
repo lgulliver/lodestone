@@ -33,7 +33,20 @@ type AddOwnerRequest struct {
 	Role   string    `json:"role" binding:"required"`
 }
 
-// handleGetPackageOwners returns all owners of a package
+// GetPackageOwners godoc
+//
+//	@Summary		Get package owners
+//	@Description	Retrieve all owners of a specific package
+//	@Tags			Package Ownership
+//	@Produce		json
+//	@Param			registry	path		string	true	"Registry type (e.g., npm, nuget, maven)"
+//	@Param			package		path		string	true	"Package name"
+//	@Success		200			{object}	object{owners=[]object}	"Package owners retrieved successfully"
+//	@Failure		401			{object}	object{error=string}	"Unauthorized"
+//	@Failure		404			{object}	object{error=string}	"Package not found"
+//	@Failure		500			{object}	object{error=string}	"Failed to retrieve package owners"
+//	@Security		BearerAuth
+//	@Router			/packages/{registry}/{package}/owners [get]
 func handleGetPackageOwners(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		registryType := c.Param("registry")
