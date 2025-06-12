@@ -78,6 +78,12 @@ func extractRepositoryName(c *gin.Context) string {
 	return strings.TrimPrefix(name, "/")
 }
 
+// @Summary OCI Registry Base Endpoint
+// @Description Docker Registry API v2 base endpoint - returns API version information
+// @Tags OCI/Docker
+// @Produce json
+// @Router /v2/ [get]
+// @Success 200 {object} map[string]interface{} "Registry API information"
 func handleOCIBase() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Docker-Distribution-API-Version", "registry/2.0")
@@ -87,6 +93,19 @@ func handleOCIBase() gin.HandlerFunc {
 	}
 }
 
+// @Summary Get Image Manifest
+// @Description Retrieve a Docker/OCI image manifest by name and reference (tag or digest)
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Produce application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param reference path string true "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)"
+// @Router /v2/{name}/manifests/{reference} [get]
+// @Success 200 {object} map[string]interface{} "Image manifest"
+// @Failure 400 {object} types.APIResponse "Bad request - repository name and reference required"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Manifest not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := extractRepositoryName(c)
@@ -156,6 +175,19 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Push Image Manifest
+// @Description Upload a Docker/OCI image manifest to the registry
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Accept application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param reference path string true "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)"
+// @Param manifest body object true "Image manifest JSON"
+// @Router /v2/{name}/manifests/{reference} [put]
+// @Success 201 "Manifest uploaded successfully"
+// @Failure 400 {object} types.APIResponse "Bad request - repository name and reference required"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIManifestPut(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
@@ -219,6 +251,17 @@ func handleOCIManifestPut(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete Image Manifest
+// @Description Delete a Docker/OCI image manifest from the registry
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param reference path string true "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)"
+// @Router /v2/{name}/manifests/{reference} [delete]
+// @Success 202 "Manifest deletion accepted"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Manifest not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIManifestDelete(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, userExists := middleware.GetUserFromContext(c)
@@ -281,6 +324,17 @@ func handleOCIManifestDelete(registryService *registry.Service) gin.HandlerFunc 
 	}
 }
 
+// @Summary Check Image Manifest Existence
+// @Description Check if a Docker/OCI image manifest exists (HEAD request)
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param reference path string true "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)"
+// @Router /v2/{name}/manifests/{reference} [head]
+// @Success 200 "Manifest exists"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 "Manifest not found"
+// @Failure 500 "Internal server error"
 func handleOCIManifestHead(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -325,6 +379,19 @@ func handleOCIManifestHead(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Download Blob
+// @Description Download a blob (layer or config) by digest from the registry
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Produce application/octet-stream
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param digest path string true "Blob digest (sha256:...)"
+// @Router /v2/{name}/blobs/{digest} [get]
+// @Success 200 {file} file "Blob content"
+// @Failure 400 {object} types.APIResponse "Bad request - invalid digest format"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Blob not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobGet(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -378,6 +445,18 @@ func handleOCIBlobGet(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Check Blob Existence
+// @Description Check if a blob exists in the registry (HEAD request)
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param digest path string true "Blob digest (sha256:...)"
+// @Router /v2/{name}/blobs/{digest} [head]
+// @Success 200 "Blob exists"
+// @Failure 400 "Bad request - invalid digest format"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 "Blob not found"
+// @Failure 500 "Internal server error"
 func handleOCIBlobHead(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -426,6 +505,17 @@ func handleOCIBlobHead(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete Blob
+// @Description Delete a blob from the registry
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param digest path string true "Blob digest (sha256:...)"
+// @Router /v2/{name}/blobs/{digest} [delete]
+// @Success 202 "Blob deletion accepted"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Blob not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobDelete(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
@@ -468,6 +558,15 @@ func handleOCIBlobDelete(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Start Blob Upload
+// @Description Start a new blob upload session for pushing layers or configs
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Router /v2/{name}/blobs/uploads/ [post]
+// @Success 202 "Upload session started"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 // Blob upload handlers - enhanced implementations with session management
 func handleOCIBlobUploadStart(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -512,6 +611,19 @@ func handleOCIBlobUploadStart(registryService *registry.Service) gin.HandlerFunc
 	}
 }
 
+// @Summary Upload Blob Chunk
+// @Description Upload a chunk of data to an existing blob upload session
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Accept application/octet-stream
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param uuid path string true "Upload session UUID"
+// @Param chunk body string true "Blob chunk data"
+// @Router /v2/{name}/blobs/uploads/{uuid} [patch]
+// @Success 202 "Chunk uploaded successfully"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Upload session not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobUploadChunk(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, exists := middleware.GetUserFromContext(c)
@@ -555,6 +667,21 @@ func handleOCIBlobUploadChunk(registryService *registry.Service) gin.HandlerFunc
 	}
 }
 
+// @Summary Complete Blob Upload
+// @Description Complete a blob upload session with digest verification
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Accept application/octet-stream
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param uuid path string true "Upload session UUID"
+// @Param digest query string true "Expected blob digest (sha256:...)"
+// @Param chunk body string false "Final blob chunk data (optional)"
+// @Router /v2/{name}/blobs/uploads/{uuid} [put]
+// @Success 201 "Blob upload completed successfully"
+// @Failure 400 {object} types.APIResponse "Bad request - digest required or invalid"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Upload session not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
@@ -639,6 +766,16 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 	}
 }
 
+// @Summary Cancel Blob Upload
+// @Description Cancel an ongoing blob upload session
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param uuid path string true "Upload session UUID"
+// @Router /v2/{name}/blobs/uploads/{uuid} [delete]
+// @Success 204 "Upload session cancelled"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobUploadCancel(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, exists := middleware.GetUserFromContext(c)
@@ -677,6 +814,17 @@ func handleOCIBlobUploadCancel(registryService *registry.Service) gin.HandlerFun
 	}
 }
 
+// @Summary Get Upload Status
+// @Description Get the status of an ongoing blob upload session
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Param uuid path string true "Upload session UUID"
+// @Router /v2/{name}/blobs/uploads/{uuid} [get]
+// @Success 204 "Upload status retrieved"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 404 {object} types.APIResponse "Upload session not found"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobUploadStatus(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, exists := middleware.GetUserFromContext(c)
@@ -718,6 +866,16 @@ func handleOCIBlobUploadStatus(registryService *registry.Service) gin.HandlerFun
 	}
 }
 
+// @Summary List Repository Tags
+// @Description List all tags for a specific repository
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Produce json
+// @Param name path string true "Repository name (e.g., library/nginx, myorg/myapp)"
+// @Router /v2/{name}/tags/list [get]
+// @Success 200 {object} map[string]interface{} "List of tags for the repository"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCITagsList(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -747,6 +905,15 @@ func handleOCITagsList(registryService *registry.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary List Repositories
+// @Description List all repositories in the registry (catalog)
+// @Tags OCI/Docker
+// @Security BearerAuth
+// @Produce json
+// @Router /v2/_catalog [get]
+// @Success 200 {object} map[string]interface{} "List of repositories"
+// @Failure 401 {object} types.APIResponse "Unauthorized"
+// @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCICatalog(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
@@ -1001,6 +1168,16 @@ func handleOCIBlobUploadCatchAll(registryService *registry.Service) gin.HandlerF
 	}
 }
 
+// @Summary Docker Registry Authentication
+// @Description Handle Docker/OCI registry authentication using Basic Auth
+// @Tags OCI/Docker
+// @Accept application/json
+// @Produce json
+// @Security BasicAuth
+// @Router /v2/auth [get]
+// @Router /v2/auth [post]
+// @Success 200 {object} map[string]interface{} "Authentication successful"
+// @Failure 401 {object} map[string]interface{} "Authentication required or failed"
 // Docker authentication handlers
 func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -1081,6 +1258,18 @@ func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Docker Registry Token
+// @Description Obtain a Bearer token for Docker/OCI registry operations (OAuth2-like flow)
+// @Tags OCI/Docker
+// @Accept application/json
+// @Produce json
+// @Security BasicAuth
+// @Param service query string false "Service name (typically registry hostname)"
+// @Param scope query string false "Access scope (e.g., repository:myrepo:pull,push)"
+// @Router /v2/token [get]
+// @Router /v2/token [post]
+// @Success 200 {object} map[string]interface{} "Bearer token response"
+// @Failure 401 {object} map[string]interface{} "Authentication required or failed"
 func handleDockerToken(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Handle Docker token requests (OAuth2-like flow)

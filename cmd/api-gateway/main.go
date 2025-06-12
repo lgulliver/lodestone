@@ -106,6 +106,9 @@ func main() {
 	routes.RubyGemsRoutes(packageRoutes, registryService, authService)
 	routes.OPARoutes(packageRoutes, registryService, authService)
 
+	// OCI/Docker registry routes - add both specific routes for Swagger and catch-all for compatibility
+	routes.OCIRoutes(api, registryService, authService)
+
 	// OCI/Docker registry routes need to be at root level for Docker CLI compatibility
 	routes.OCIRootRoutes(router, registryService, authService)
 

@@ -1242,6 +1242,947 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/v2/": {
+            "get": {
+                "description": "Docker Registry API v2 base endpoint - returns API version information",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "OCI Registry Base Endpoint",
+                "responses": {
+                    "200": {
+                        "description": "Registry API information",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/_catalog": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all repositories in the registry (catalog)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "List Repositories",
+                "responses": {
+                    "200": {
+                        "description": "List of repositories",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/auth": {
+            "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "description": "Handle Docker/OCI registry authentication using Basic Auth",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Docker Registry Authentication",
+                "responses": {
+                    "200": {
+                        "description": "Authentication successful",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required or failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "description": "Handle Docker/OCI registry authentication using Basic Auth",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Docker Registry Authentication",
+                "responses": {
+                    "200": {
+                        "description": "Authentication successful",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required or failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/token": {
+            "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "description": "Obtain a Bearer token for Docker/OCI registry operations (OAuth2-like flow)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Docker Registry Token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Service name (typically registry hostname)",
+                        "name": "service",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Access scope (e.g., repository:myrepo:pull,push)",
+                        "name": "scope",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Bearer token response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required or failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "description": "Obtain a Bearer token for Docker/OCI registry operations (OAuth2-like flow)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Docker Registry Token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Service name (typically registry hostname)",
+                        "name": "service",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Access scope (e.g., repository:myrepo:pull,push)",
+                        "name": "scope",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Bearer token response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required or failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/{name}/blobs/uploads/": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Start a new blob upload session for pushing layers or configs",
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Start Blob Upload",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Upload session started"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/{name}/blobs/uploads/{uuid}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the status of an ongoing blob upload session",
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Get Upload Status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Upload session UUID",
+                        "name": "uuid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Upload status retrieved"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Upload session not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Complete a blob upload session with digest verification",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Complete Blob Upload",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Upload session UUID",
+                        "name": "uuid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Expected blob digest (sha256:...)",
+                        "name": "digest",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "Final blob chunk data (optional)",
+                        "name": "chunk",
+                        "in": "body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Blob upload completed successfully"
+                    },
+                    "400": {
+                        "description": "Bad request - digest required or invalid",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Upload session not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cancel an ongoing blob upload session",
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Cancel Blob Upload",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Upload session UUID",
+                        "name": "uuid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Upload session cancelled"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a chunk of data to an existing blob upload session",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Upload Blob Chunk",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Upload session UUID",
+                        "name": "uuid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Blob chunk data",
+                        "name": "chunk",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Chunk uploaded successfully"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Upload session not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/{name}/blobs/{digest}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Download a blob (layer or config) by digest from the registry",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Download Blob",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Blob digest (sha256:...)",
+                        "name": "digest",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Blob content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - invalid digest format",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Blob not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a blob from the registry",
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Delete Blob",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Blob digest (sha256:...)",
+                        "name": "digest",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Blob deletion accepted"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Blob not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "head": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Check if a blob exists in the registry (HEAD request)",
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Check Blob Existence",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Blob digest (sha256:...)",
+                        "name": "digest",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Blob exists"
+                    },
+                    "400": {
+                        "description": "Bad request - invalid digest format"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Blob not found"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                }
+            }
+        },
+        "/v2/{name}/manifests/{reference}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a Docker/OCI image manifest by name and reference (tag or digest)",
+                "produces": [
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                    "application/vnd.oci.image.manifest.v1+json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Get Image Manifest",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)",
+                        "name": "reference",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Image manifest",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - repository name and reference required",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Manifest not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a Docker/OCI image manifest to the registry",
+                "consumes": [
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                    "application/vnd.oci.image.manifest.v1+json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Push Image Manifest",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)",
+                        "name": "reference",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Image manifest JSON",
+                        "name": "manifest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Manifest uploaded successfully"
+                    },
+                    "400": {
+                        "description": "Bad request - repository name and reference required",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a Docker/OCI image manifest from the registry",
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Delete Image Manifest",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)",
+                        "name": "reference",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Manifest deletion accepted"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Manifest not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            },
+            "head": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Check if a Docker/OCI image manifest exists (HEAD request)",
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "Check Image Manifest Existence",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)",
+                        "name": "reference",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Manifest exists"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Manifest not found"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                }
+            }
+        },
+        "/v2/{name}/tags/list": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all tags for a specific repository",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OCI/Docker"
+                ],
+                "summary": "List Repository Tags",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository name (e.g., library/nginx, myorg/myapp)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of tags for the repository",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {

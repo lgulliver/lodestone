@@ -824,4 +824,615 @@ paths:
       summary: Get package owners
       tags:
       - Package Ownership
+  /v2/:
+    get:
+      description: Docker Registry API v2 base endpoint - returns API version information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Registry API information
+          schema:
+            additionalProperties: true
+            type: object
+      summary: OCI Registry Base Endpoint
+      tags:
+      - OCI/Docker
+  /v2/_catalog:
+    get:
+      description: List all repositories in the registry (catalog)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of repositories
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: List Repositories
+      tags:
+      - OCI/Docker
+  /v2/{name}/blobs/{digest}:
+    delete:
+      description: Delete a blob from the registry
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Blob digest (sha256:...)
+        in: path
+        name: digest
+        required: true
+        type: string
+      responses:
+        "202":
+          description: Blob deletion accepted
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Blob not found
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete Blob
+      tags:
+      - OCI/Docker
+    get:
+      description: Download a blob (layer or config) by digest from the registry
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Blob digest (sha256:...)
+        in: path
+        name: digest
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Blob content
+          schema:
+            type: file
+        "400":
+          description: Bad request - invalid digest format
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Blob not found
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Download Blob
+      tags:
+      - OCI/Docker
+    head:
+      description: Check if a blob exists in the registry (HEAD request)
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Blob digest (sha256:...)
+        in: path
+        name: digest
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Blob exists
+        "400":
+          description: Bad request - invalid digest format
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Blob not found
+        "500":
+          description: Internal server error
+      security:
+      - BearerAuth: []
+      summary: Check Blob Existence
+      tags:
+      - OCI/Docker
+  /v2/{name}/blobs/uploads/:
+    post:
+      description: Start a new blob upload session for pushing layers or configs
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      responses:
+        "202":
+          description: Upload session started
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Start Blob Upload
+      tags:
+      - OCI/Docker
+  /v2/{name}/blobs/uploads/{uuid}:
+    delete:
+      description: Cancel an ongoing blob upload session
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Upload session UUID
+        in: path
+        name: uuid
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Upload session cancelled
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel Blob Upload
+      tags:
+      - OCI/Docker
+    get:
+      description: Get the status of an ongoing blob upload session
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Upload session UUID
+        in: path
+        name: uuid
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Upload status retrieved
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Upload session not found
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Upload Status
+      tags:
+      - OCI/Docker
+    patch:
+      consumes:
+      - application/octet-stream
+      description: Upload a chunk of data to an existing blob upload session
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Upload session UUID
+        in: path
+        name: uuid
+        required: true
+        type: string
+      - description: Blob chunk data
+        in: body
+        name: chunk
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: Chunk uploaded successfully
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Upload session not found
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload Blob Chunk
+      tags:
+      - OCI/Docker
+    put:
+      consumes:
+      - application/octet-stream
+      description: Complete a blob upload session with digest verification
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Upload session UUID
+        in: path
+        name: uuid
+        required: true
+        type: string
+      - description: Expected blob digest (sha256:...)
+        in: query
+        name: digest
+        required: true
+        type: string
+      - description: Final blob chunk data (optional)
+        in: body
+        name: chunk
+        schema:
+          type: string
+      responses:
+        "201":
+          description: Blob upload completed successfully
+        "400":
+          description: Bad request - digest required or invalid
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Upload session not found
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Complete Blob Upload
+      tags:
+      - OCI/Docker
+  /v2/{name}/manifests/{reference}:
+    delete:
+      description: Delete a Docker/OCI image manifest from the registry
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)
+        in: path
+        name: reference
+        required: true
+        type: string
+      responses:
+        "202":
+          description: Manifest deletion accepted
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Manifest not found
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete Image Manifest
+      tags:
+      - OCI/Docker
+    get:
+      description: Retrieve a Docker/OCI image manifest by name and reference (tag
+        or digest)
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)
+        in: path
+        name: reference
+        required: true
+        type: string
+      produces:
+      - application/vnd.docker.distribution.manifest.v2+json
+      - application/vnd.oci.image.manifest.v1+json
+      responses:
+        "200":
+          description: Image manifest
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request - repository name and reference required
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Manifest not found
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Image Manifest
+      tags:
+      - OCI/Docker
+    head:
+      description: Check if a Docker/OCI image manifest exists (HEAD request)
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)
+        in: path
+        name: reference
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Manifest exists
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "404":
+          description: Manifest not found
+        "500":
+          description: Internal server error
+      security:
+      - BearerAuth: []
+      summary: Check Image Manifest Existence
+      tags:
+      - OCI/Docker
+    put:
+      consumes:
+      - application/vnd.docker.distribution.manifest.v2+json
+      - application/vnd.oci.image.manifest.v1+json
+      description: Upload a Docker/OCI image manifest to the registry
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Image reference - tag (e.g., latest, v1.0) or digest (sha256:...)
+        in: path
+        name: reference
+        required: true
+        type: string
+      - description: Image manifest JSON
+        in: body
+        name: manifest
+        required: true
+        schema:
+          type: object
+      responses:
+        "201":
+          description: Manifest uploaded successfully
+        "400":
+          description: Bad request - repository name and reference required
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Push Image Manifest
+      tags:
+      - OCI/Docker
+  /v2/{name}/tags/list:
+    get:
+      description: List all tags for a specific repository
+      parameters:
+      - description: Repository name (e.g., library/nginx, myorg/myapp)
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of tags for the repository
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_lgulliver_lodestone_pkg_types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: List Repository Tags
+      tags:
+      - OCI/Docker
+  /v2/auth:
+    get:
+      consumes:
+      - application/json
+      description: Handle Docker/OCI registry authentication using Basic Auth
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Authentication successful
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Authentication required or failed
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Docker Registry Authentication
+      tags:
+      - OCI/Docker
+    post:
+      consumes:
+      - application/json
+      description: Handle Docker/OCI registry authentication using Basic Auth
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Authentication successful
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Authentication required or failed
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Docker Registry Authentication
+      tags:
+      - OCI/Docker
+  /v2/token:
+    get:
+      consumes:
+      - application/json
+      description: Obtain a Bearer token for Docker/OCI registry operations (OAuth2-like
+        flow)
+      parameters:
+      - description: Service name (typically registry hostname)
+        in: query
+        name: service
+        type: string
+      - description: Access scope (e.g., repository:myrepo:pull,push)
+        in: query
+        name: scope
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Bearer token response
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Authentication required or failed
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Docker Registry Token
+      tags:
+      - OCI/Docker
+    post:
+      consumes:
+      - application/json
+      description: Obtain a Bearer token for Docker/OCI registry operations (OAuth2-like
+        flow)
+      parameters:
+      - description: Service name (typically registry hostname)
+        in: query
+        name: service
+        type: string
+      - description: Access scope (e.g., repository:myrepo:pull,push)
+        in: query
+        name: scope
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Bearer token response
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Authentication required or failed
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BasicAuth: []
+      summary: Docker Registry Token
+      tags:
+      - OCI/Docker
 swagger: "2.0"
