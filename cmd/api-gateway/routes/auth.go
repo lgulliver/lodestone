@@ -12,6 +12,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type authContextKey string
+
+const (
+	requestIDContextKey authContextKey = "request_id"
+	userIDContextKey    authContextKey = "user_id"
+)
+
 // AuthRoutes sets up authentication-related routes
 func AuthRoutes(api *gin.RouterGroup, authService *auth.Service) {
 	auth := api.Group("/auth")
@@ -63,7 +70,7 @@ func handleRegister(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "request_id", requestID)
+		ctx := context.WithValue(c.Request.Context(), requestIDContextKey, requestID)
 
 		user, err := authService.Register(ctx, &req)
 		if err != nil {
@@ -112,7 +119,7 @@ func handleLogin(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "request_id", c.GetHeader("X-Request-ID"))
+		ctx := context.WithValue(c.Request.Context(), requestIDContextKey, c.GetHeader("X-Request-ID"))
 
 		authToken, err := authService.Login(ctx, &req)
 		if err != nil {
@@ -161,7 +168,7 @@ func handleCreateAPIKey(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), userIDContextKey, user.ID)
 
 		apiKey, keyValue, err := authService.CreateAPIKey(ctx, user.ID, req.Name, req.Permissions)
 		if err != nil {
@@ -195,7 +202,7 @@ func handleListAPIKeys(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), userIDContextKey, user.ID)
 
 		apiKeys, err := authService.ListAPIKeys(ctx, user.ID)
 		if err != nil {
@@ -242,7 +249,7 @@ func handleRevokeAPIKey(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), userIDContextKey, user.ID)
 
 		err = authService.RevokeAPIKey(ctx, keyUUID, user.ID)
 		if err != nil {
