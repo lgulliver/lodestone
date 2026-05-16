@@ -14,7 +14,11 @@ This directory contains detailed documentation for using and deploying Lodestone
   - Symbol packages (.snupkg) 
   - Authentication setup
   - Troubleshooting
-- **[PACKAGE-FORMATS.md](PACKAGE-FORMATS.md)** - Quick reference for all package formats
+- **[PACKAGE-FORMATS.md](PACKAGE-FORMATS.md)** - Quick reference and current validated status for all package formats
+
+## Current Feed State
+
+See **[PACKAGE-FORMATS.md](PACKAGE-FORMATS.md)** for the live-tested status table (fully working vs partial vs blocked) for each feed.
 
 ## Key Features
 

@@ -24,7 +24,7 @@ Lodestone follows a microservices architecture with the following components:
 - **Authentication Service** - JWT tokens, RBAC, API keys
 - **Registry Service** - Pluggable artifact handlers
 - **Metadata Service** - Search, indexing, and package metadata
-- **Storage Backend** - Configurable blob storage (S3, GCS, Azure, local)
+- **Storage Backend** - Configurable blob storage (S3-compatible, Azure Blob, local)
 
 ## Quick Start
 
@@ -47,8 +47,8 @@ Lodestone follows a microservices architecture with the following components:
 # Build all services
 make build
 
-# Run locally with Docker Compose
-make dev
+# Run locally with Docker Compose (dev stack)
+make docker-up
 
 # Deploy to Kubernetes
 make deploy
@@ -61,11 +61,7 @@ For detailed deployment options, see [deploy/README.md](deploy/README.md).
 Detailed guides for using Lodestone with specific package formats:
 
 - **[NuGet Documentation](docs/NUGET.md)** - Complete guide for .NET packages, including symbol packages
-- **Maven** - Java package management (coming soon)
-- **npm** - Node.js package management (coming soon)
-- **Cargo** - Rust package management (coming soon)
-- **OCI** - Container image management (coming soon)
-- **Helm** - Kubernetes chart management (coming soon)
+- **[Package Formats Quick Reference](docs/PACKAGE-FORMATS.md)** - Current implementation status and caveats across all feeds
 
 ## Authentication
 
@@ -76,7 +72,7 @@ All package operations require API key authentication. Generate API keys through
 curl -X POST "http://localhost:8080/api/v1/auth/api-keys" \
     -H "Authorization: Bearer your-jwt-token" \
     -H "Content-Type: application/json" \
-    -d '{"name": "my-build-key", "scopes": ["read", "write"]}'
+    -d '{"name": "my-build-key", "permissions": ["read", "write"]}'
 ```
 
 API keys should be included in requests using the `X-NuGet-ApiKey` header for NuGet operations, or similar format for other package types.

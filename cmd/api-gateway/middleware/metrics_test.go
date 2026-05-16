@@ -34,4 +34,3 @@ func TestHTTPMetricsMiddleware_RecordsRequests(t *testing.T) {
 	requestTotal := testutil.ToFloat64(metrics.requestsTotal.WithLabelValues("GET", "/ok", "201"))
 	assert.Equal(t, float64(1), requestTotal)
 }
-

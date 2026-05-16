@@ -72,4 +72,3 @@ var defaultHTTPMetrics = NewHTTPMetrics(prometheus.DefaultRegisterer)
 func MetricsMiddleware() gin.HandlerFunc {
 	return defaultHTTPMetrics.Middleware()
 }
-

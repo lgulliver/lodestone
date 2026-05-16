@@ -2,6 +2,22 @@
 
 Quick reference guides for working with different package formats in Lodestone.
 
+## Current Implementation Status (validated)
+
+| Feed | Workflow Status | Notes |
+|---|---|---|
+| NuGet | ✅ Upload + Download | `.nupkg` upload/download verified; `.snupkg` upload supported via curl |
+| npm | ✅ Upload + Download | npm publish/download verified |
+| Helm | ✅ Upload + Download | multipart chart upload and chart download verified |
+| Cargo | ✅ Upload + Download | upload/download verified with route-friendly crate name (`lodestone-cargo`) |
+| Go Modules | ✅ Upload + Download (simple module path) | works for module names without path separators (e.g. `lodestone`) |
+| OPA | ✅ Upload + Download | bundle upload/download verified |
+| Maven | ⚠️ Upload only | upload works; download currently fails due upload/download path-to-package mapping mismatch |
+| RubyGems | ⚠️ Not stable | upload currently returns `500`; download not available for uploaded artifact |
+| OCI/Docker | ⚠️ Blocked in current runtime path | `/v2/*` currently returns `503` registry disabled on OCI route in current environment |
+
+---
+
 ## NuGet (.NET Packages)
 
 ### Basic Usage
@@ -32,21 +48,16 @@ curl -X PUT "http://localhost:8080/api/v1/nuget/v2/symbolpackage" \
 ---
 
 ## Maven (Java Packages)
-
-Coming soon...
+Current note: upload endpoint is active, but download currently fails due package key/path parsing mismatch.
 
 ## npm (Node.js Packages)
-
-Coming soon...
+npm publish/download flows are implemented and validated.
 
 ## Cargo (Rust Packages)
-
-Coming soon...
+Cargo upload/download flows are implemented and validated.
 
 ## OCI (Container Images)
-
-Coming soon...
+Endpoints are implemented, but the runtime path is currently blocked by OCI registry enablement behavior (`503` on `/v2/*`).
 
 ## Helm (Kubernetes Charts)
-
-Coming soon...
+Helm upload/download flows are implemented and validated.

@@ -9,4 +9,3 @@ import (
 func TracingMiddleware(serviceName string) gin.HandlerFunc {
 	return otelgin.Middleware(serviceName)
 }
-

@@ -30,7 +30,7 @@ This guide covers deploying Lodestone artifact registry using Docker Compose for
 
 ### Required Environment Variables
 
-Copy `.env.example` to `.env` and configure the following:
+Use `make env-setup` for dev defaults, or copy `.env.example` to `.env` for manual setup, then configure:
 
 #### Database
 ```bash
