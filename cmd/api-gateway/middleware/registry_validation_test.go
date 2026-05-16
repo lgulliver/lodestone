@@ -107,6 +107,25 @@ func TestRegistryValidationMiddleware_RootOCIPathUsesOCIRegistry(t *testing.T) {
 	assert.Equal(t, "oci", body["registry"])
 }
 
+func TestRegistryValidationMiddleware_RootOCIPathEnabledPasses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	settingsService, db := newTestRegistrySettingsService(t)
+	seedRegistrySetting(t, db, "oci", true)
+
+	router := gin.New()
+	router.Use(RegistryValidationMiddleware(settingsService))
+	router.GET("/v2/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestRegistryValidationMiddleware_DatabaseErrorReturns500(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

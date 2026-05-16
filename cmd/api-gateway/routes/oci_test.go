@@ -1,12 +1,15 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -127,26 +130,58 @@ func TestOCIBaseEndpointOnly(t *testing.T) {
 	assert.Equal(t, "registry/2.0", w.Header().Get("Docker-Distribution-API-Version"))
 }
 
-type ociRouteTestStorage struct{}
+type ociRouteTestStorage struct {
+	mu   sync.Mutex
+	data map[string][]byte
+}
 
-func (s *ociRouteTestStorage) Store(_ context.Context, _ string, _ io.Reader, _ string) error {
+func newOCIRouteTestStorage() *ociRouteTestStorage {
+	return &ociRouteTestStorage{data: make(map[string][]byte)}
+}
+
+func (s *ociRouteTestStorage) Store(_ context.Context, path string, r io.Reader, _ string) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.data[path] = b
+	s.mu.Unlock()
 	return nil
 }
 
-func (s *ociRouteTestStorage) Retrieve(_ context.Context, _ string) (io.ReadCloser, error) {
-	return io.NopCloser(strings.NewReader("")), nil
+func (s *ociRouteTestStorage) Retrieve(_ context.Context, path string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	b, ok := s.data[path]
+	s.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("not found: %s", path)
+	}
+	return io.NopCloser(bytes.NewReader(b)), nil
 }
 
-func (s *ociRouteTestStorage) Delete(_ context.Context, _ string) error {
+func (s *ociRouteTestStorage) Delete(_ context.Context, path string) error {
+	s.mu.Lock()
+	delete(s.data, path)
+	s.mu.Unlock()
 	return nil
 }
 
-func (s *ociRouteTestStorage) Exists(_ context.Context, _ string) (bool, error) {
-	return true, nil
+func (s *ociRouteTestStorage) Exists(_ context.Context, path string) (bool, error) {
+	s.mu.Lock()
+	_, ok := s.data[path]
+	s.mu.Unlock()
+	return ok, nil
 }
 
-func (s *ociRouteTestStorage) GetSize(_ context.Context, _ string) (int64, error) {
-	return 0, nil
+func (s *ociRouteTestStorage) GetSize(_ context.Context, path string) (int64, error) {
+	s.mu.Lock()
+	b, ok := s.data[path]
+	s.mu.Unlock()
+	if !ok {
+		return 0, fmt.Errorf("not found: %s", path)
+	}
+	return int64(len(b)), nil
 }
 
 func (s *ociRouteTestStorage) List(_ context.Context, _ string) ([]string, error) {
@@ -158,7 +193,7 @@ func setupOCIOwnershipRouteTest(t *testing.T) (*registry.Service, *types.User, *
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{}))
 
-	registryService := registry.NewService(&common.Database{DB: db}, &ociRouteTestStorage{})
+	registryService := registry.NewService(&common.Database{DB: db}, newOCIRouteTestStorage())
 
 	owner := &types.User{Username: "owner", Email: "owner@example.com", Password: "pw", IsActive: true}
 	outsider := &types.User{Username: "outsider", Email: "outsider@example.com", Password: "pw", IsActive: true}
@@ -245,6 +280,75 @@ func setupOCITokenAuthService(t *testing.T, permissions []string) (*auth.Service
 	require.NoError(t, err)
 
 	return authService, apiKey, user
+}
+
+func TestOCIBlobUploadStartAllowedForOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	registryService, owner, _ := setupOCIOwnershipRouteTest(t)
+
+	router := gin.New()
+	router.POST("/v2/:name/blobs/uploads/", func(c *gin.Context) {
+		c.Set("user", owner)
+		handleOCIBlobUploadStart(registryService)(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code)
+	assert.NotEmpty(t, w.Header().Get("Location"))
+	assert.NotEmpty(t, w.Header().Get("Docker-Upload-UUID"))
+}
+
+func TestOCIManifestPutAllowedForOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	registryService, owner, _ := setupOCIOwnershipRouteTest(t)
+
+	router := gin.New()
+	router.PUT("/v2/:name/manifests/:reference", func(c *gin.Context) {
+		c.Set("user", owner)
+		handleOCIManifestPut(registryService)(c)
+	})
+
+	manifest := `{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json","layers":[]}`
+	req := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/latest", strings.NewReader(manifest))
+	req.Header.Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.NotEmpty(t, w.Header().Get("Docker-Content-Digest"))
+}
+
+func TestOCIManifestGetAuthenticatedUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	registryService, owner, _ := setupOCIOwnershipRouteTest(t)
+
+	// First, put a manifest so we can retrieve it
+	router := gin.New()
+	router.PUT("/v2/:name/manifests/:reference", func(c *gin.Context) {
+		c.Set("user", owner)
+		handleOCIManifestPut(registryService)(c)
+	})
+	router.GET("/v2/:name/manifests/:reference", func(c *gin.Context) {
+		c.Set("user", owner)
+		handleOCIManifestGet(registryService)(c)
+	})
+
+	manifest := `{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json","layers":[]}`
+	putReq := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1.0", strings.NewReader(manifest))
+	putReq.Header.Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+	putW := httptest.NewRecorder()
+	router.ServeHTTP(putW, putReq)
+	require.Equal(t, http.StatusCreated, putW.Code)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v2/repo/manifests/v1.0", nil)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+
+	assert.Equal(t, http.StatusOK, getW.Code)
+	assert.NotEmpty(t, getW.Header().Get("Docker-Content-Digest"))
 }
 
 func TestDockerTokenIssuesScopedJWTInsteadOfAPIKey(t *testing.T) {
