@@ -6,15 +6,15 @@ Quick reference guides for working with different package formats in Lodestone.
 
 | Feed | Workflow Status | Notes |
 |---|---|---|
-| NuGet | ✅ Upload + Download | `.nupkg` upload/download verified; `.snupkg` upload supported via curl |
-| npm | ✅ Upload + Download | npm publish/download verified |
-| Helm | ✅ Upload + Download | multipart chart upload and chart download verified |
-| Cargo | ✅ Upload + Download | upload/download verified with route-friendly crate name (`lodestone-cargo`) |
-| Go Modules | ✅ Upload + Download (simple module path) | works for module names without path separators (e.g. `lodestone`) |
-| OPA | ✅ Upload + Download | bundle upload/download verified |
-| Maven | ⚠️ Upload only | upload works; download currently fails due upload/download path-to-package mapping mismatch |
-| RubyGems | ⚠️ Not stable | upload currently returns `500`; download not available for uploaded artifact |
-| OCI/Docker | ⚠️ Blocked in current runtime path | `/v2/*` currently returns `503` registry disabled on OCI route in current environment |
+| [NuGet](NUGET.md) | ✅ Upload + Download | `.nupkg` upload/download verified; `.snupkg` upload supported via curl |
+| [npm](package-feeds/npm.md) | ✅ Upload + Download | npm publish/download verified |
+| [Helm](package-feeds/helm.md) | ✅ Upload + Download | multipart chart upload and chart download verified |
+| [Cargo](package-feeds/cargo.md) | ✅ Upload + Download | upload/download verified with route-friendly crate name (`lodestone-cargo`) |
+| [Go Modules](package-feeds/go.md) | ✅ Upload + Download (simple module path) | works for module names without path separators (e.g. `lodestone`) |
+| [OPA](package-feeds/opa.md) | ✅ Upload + Download | bundle upload/download verified |
+| [Maven](package-feeds/maven.md) | ⚠️ Upload only | upload works; download currently fails due upload/download path-to-package mapping mismatch |
+| [RubyGems](package-feeds/rubygems.md) | ⚠️ Not stable | upload currently returns `500`; download not available for uploaded artifact |
+| [OCI/Docker](package-feeds/oci.md) | ⚠️ Blocked in current runtime path | `/v2/*` currently returns `503` registry disabled on OCI route in current environment |
 
 ---
 
@@ -61,3 +61,9 @@ Endpoints are implemented, but the runtime path is currently blocked by OCI regi
 
 ## Helm (Kubernetes Charts)
 Helm upload/download flows are implemented and validated.
+
+---
+
+## Feed Guides
+
+See **[package-feeds/README.md](package-feeds/README.md)** for concise, route-accurate examples for npm, Maven, Cargo, Go, Helm, RubyGems, OPA, and OCI.

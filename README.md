@@ -61,6 +61,7 @@ For detailed deployment options, see [deploy/README.md](deploy/README.md).
 Detailed guides for using Lodestone with specific package formats:
 
 - **[NuGet Documentation](docs/NUGET.md)** - Complete guide for .NET packages, including symbol packages
+- **[Package Feed Guides](docs/package-feeds/README.md)** - Feed-specific usage pages for npm, Maven, Cargo, Go, Helm, RubyGems, OPA, and OCI
 - **[Package Formats Quick Reference](docs/PACKAGE-FORMATS.md)** - Current implementation status and caveats across all feeds
 
 ## Authentication

@@ -14,6 +14,8 @@ This directory contains detailed documentation for using and deploying Lodestone
   - Symbol packages (.snupkg) 
   - Authentication setup
   - Troubleshooting
+- **[package-feeds/README.md](package-feeds/README.md)** - Index of the current feed-specific usage pages
+  - npm, Maven, Cargo, Go, Helm, RubyGems, OPA, OCI
 - **[PACKAGE-FORMATS.md](PACKAGE-FORMATS.md)** - Quick reference and current validated status for all package formats
 
 ## Current Feed State
