@@ -187,7 +187,7 @@ func handleNuGetPackageVersions(registryService *registry.Service) gin.HandlerFu
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "nuget")
 
 		filter := &types.ArtifactFilter{
 			Name:     packageID,
@@ -236,7 +236,7 @@ func handleNuGetDownload(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "nuget")
 
 		artifact, content, err := registryService.Download(ctx, "nuget", packageID, version)
 		if err != nil {
@@ -290,8 +290,8 @@ func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 			Int64("content_length", c.Request.ContentLength).
 			Msg("Processing NuGet upload request")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "nuget")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		var fileContent []byte
 		var filename string
@@ -426,8 +426,8 @@ func handleNuGetDelete(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "nuget")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		err := registryService.Delete(ctx, "nuget", packageID, version, user.ID)
 		if err != nil {
@@ -460,7 +460,7 @@ func handleNuGetSearch(registryService *registry.Service) gin.HandlerFunc {
 		skipInt, _ := strconv.Atoi(skip)
 		takeInt, _ := strconv.Atoi(take)
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "nuget")
 
 		filter := &types.ArtifactFilter{
 			Registry: "nuget",
@@ -525,7 +525,7 @@ func handleNuGetPackageMetadata(registryService *registry.Service) gin.HandlerFu
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "nuget")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "nuget")
 
 		// Use ILIKE in service layer for case-insensitive search
 		filter := &types.ArtifactFilter{
