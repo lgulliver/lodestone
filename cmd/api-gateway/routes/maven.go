@@ -87,17 +87,6 @@ func handleMavenUpload(registryService *registry.Service) gin.HandlerFunc {
 		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
 		ctx = context.WithValue(ctx, "user_id", user.ID)
 
-		contentType := c.GetHeader("Content-Type")
-		if contentType == "" {
-			if strings.HasSuffix(path, ".jar") {
-				contentType = "application/java-archive"
-			} else if strings.HasSuffix(path, ".pom") {
-				contentType = "application/xml"
-			} else {
-				contentType = "application/octet-stream"
-			}
-		}
-
 		// Parse Maven path to extract groupId, artifactId, and version
 		// Format: com/example/artifact/1.0.0/artifact-1.0.0.jar
 		pathParts := strings.Split(path, "/")

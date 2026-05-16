@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -775,7 +774,7 @@ func handleNuGetSymbolUpload(registryService *registry.Service) gin.HandlerFunc 
 		}
 
 		if err := registryService.DB.Create(artifact).Error; err != nil {
-			registryService.Storage.Delete(c.Request.Context(), artifact.StoragePath)
+			_ = registryService.Storage.Delete(c.Request.Context(), artifact.StoragePath)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to save symbol package metadata: %v", err)})
 			return
 		}
@@ -865,94 +864,6 @@ func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFun
 			c.AbortWithStatus(http.StatusInternalServerError)
 		}
 	}
-}
-
-// extractSymbolPackageFilename extracts the filename from symbol package content
-// by reading the ZIP file structure (symbol packages are ZIP files)
-func extractSymbolPackageFilename(content []byte) (string, error) {
-	// Read ZIP content to extract package information
-	reader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
-	if err != nil {
-		return "", fmt.Errorf("failed to read symbol package as ZIP: %w", err)
-	}
-
-	// Look for .pdb files or .nuspec files to determine package name
-	var packageName, version string
-
-	for _, file := range reader.File {
-		if strings.HasSuffix(file.Name, ".pdb") {
-			// Extract from path like lib/net8.0/PackageName.pdb
-			parts := strings.Split(file.Name, "/")
-			if len(parts) > 0 {
-				pdbName := parts[len(parts)-1]
-				if strings.HasSuffix(pdbName, ".pdb") {
-					packageName = strings.TrimSuffix(pdbName, ".pdb")
-					break
-				}
-			}
-		}
-	}
-
-	// If we can't extract from PDB, try to parse from any .nuspec file
-	if packageName == "" {
-		for _, file := range reader.File {
-			if strings.HasSuffix(file.Name, ".nuspec") {
-				// Parse nuspec file
-				rc, err := file.Open()
-				if err != nil {
-					continue
-				}
-				defer rc.Close()
-
-				nuspecContent, err := io.ReadAll(rc)
-				if err != nil {
-					continue
-				}
-
-				// Simple XML parsing to extract package ID and version
-				packageName, version = parseSymbolNuspecContent(nuspecContent)
-				if packageName != "" && version != "" {
-					break
-				}
-			}
-		}
-	}
-
-	// If still no package name, use a generic approach
-	if packageName == "" {
-		packageName = "unknown.package"
-	}
-	if version == "" {
-		version = "1.0.0"
-	}
-
-	return fmt.Sprintf("%s.%s.snupkg", packageName, version), nil
-}
-
-// parseSymbolNuspecContent parses nuspec XML content to extract package ID and version
-func parseSymbolNuspecContent(content []byte) (string, string) {
-	// Simple regex-based parsing since we don't want to add XML dependency
-	idRegex := regexp.MustCompile(`<id>([^<]+)</id>`)
-	versionRegex := regexp.MustCompile(`<version>([^<]+)</version>`)
-
-	var packageID, version string
-
-	if match := idRegex.FindSubmatch(content); len(match) > 1 {
-		packageID = string(match[1])
-	}
-
-	if match := versionRegex.FindSubmatch(content); len(match) > 1 {
-		version = string(match[1])
-	}
-
-	return packageID, version
-}
-
-// isValidVersion checks if a string looks like a semantic version
-func isValidVersion(version string) bool {
-	// Simple check for version pattern: digits, dots, and optional pre-release/build metadata
-	versionRegex := regexp.MustCompile(`^\d+\.\d+\.\d+`)
-	return versionRegex.MatchString(version)
 }
 
 // extractSymbolPackageInfo extracts package name and version from .snupkg file contents

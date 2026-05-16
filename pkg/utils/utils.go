@@ -168,8 +168,3 @@ func FormatBytes(bytes int64) string {
 func DecodeBase64(encoded string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(encoded)
 }
-
-// generateUploadUUID generates a UUID for upload sessions
-func generateUploadUUID() string {
-	return uuid.New().String()
-}

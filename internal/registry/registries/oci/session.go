@@ -176,7 +176,7 @@ func (sm *SessionManager) CompleteUpload(ctx context.Context, sessionID, expecte
 	}
 
 	// Clean up temp file
-	sm.storage.Delete(ctx, session.TempPath)
+	_ = sm.storage.Delete(ctx, session.TempPath)
 
 	log.Info().
 		Str("session_id", sessionID).
@@ -199,7 +199,7 @@ func (sm *SessionManager) CancelUpload(ctx context.Context, sessionID string) er
 	}
 
 	// Clean up temp file
-	sm.storage.Delete(ctx, session.TempPath)
+	_ = sm.storage.Delete(ctx, session.TempPath)
 
 	// Remove session
 	delete(sm.sessions, sessionID)
@@ -249,7 +249,7 @@ func (sm *SessionManager) cleanupExpiredSessions() {
 		if lastUpdate.Before(expiry) {
 			expiredSessions = append(expiredSessions, sessionID)
 			// Clean up temp file
-			sm.storage.Delete(context.Background(), tempPath)
+			_ = sm.storage.Delete(context.Background(), tempPath)
 		}
 	}
 

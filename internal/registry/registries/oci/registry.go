@@ -319,7 +319,7 @@ func (r *Registry) DeleteManifest(ctx context.Context, repository, reference str
 	// Also try to delete by digest (ignore errors)
 	if digest != "" {
 		digestPath := fmt.Sprintf("oci/%s/manifests/%s", repository, digest)
-		r.storage.Delete(ctx, digestPath)
+		_ = r.storage.Delete(ctx, digestPath)
 	}
 
 	return nil

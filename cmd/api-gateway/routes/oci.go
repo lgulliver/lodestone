@@ -665,12 +665,13 @@ func handleOCIBlobUploadChunk(registryService *registry.Service) gin.HandlerFunc
 			return
 		}
 
-		session, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
+		_, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
 		if !authorized {
 			return
 		}
 
 		// Append chunk to session
+		var session *oci.UploadSession
 		session, err = ociRegistry.AppendBlobChunk(c.Request.Context(), sessionID, c.Request.Body, contentRange)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("upload session error: %v", err)})
@@ -739,7 +740,7 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 			return
 		}
 
-		session, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
+		_, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
 		if !authorized {
 			return
 		}

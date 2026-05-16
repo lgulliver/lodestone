@@ -664,7 +664,6 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 				// Check if this is a stable version (not a prerelease)
 				if !utils.IsPrerelease(version) {
 					// Check if there's a current latest version in the registry
-					existingVersions := make([]string, 0)
 					existingArtifacts, _, _ := registryService.List(ctx, &types.ArtifactFilter{
 						Registry: "npm",
 						Name:     packageName,
@@ -674,7 +673,6 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 					latestVersion := ""
 
 					for _, art := range existingArtifacts {
-						existingVersions = append(existingVersions, art.Version)
 
 						// Look for existing latest tag in metadata
 						if art.Metadata != nil {
@@ -914,7 +912,6 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 				// Check if this is a stable version (not a prerelease)
 				if !utils.IsPrerelease(version) {
 					// Check if there's a current latest version in the registry
-					existingVersions := make([]string, 0)
 					existingArtifacts, _, _ := registryService.List(ctx, &types.ArtifactFilter{
 						Registry: "npm",
 						Name:     packageName,
@@ -924,7 +921,6 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 					latestVersion := ""
 
 					for _, art := range existingArtifacts {
-						existingVersions = append(existingVersions, art.Version)
 
 						// Look for existing latest tag in metadata
 						if art.Metadata != nil {

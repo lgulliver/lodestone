@@ -13,6 +13,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// contextKey is a private type for context keys in this package to avoid collisions.
+type contextKey string
+
+const (
+	contextKeyToken  contextKey = "token"
+	contextKeyAPIKey contextKey = "api_key"
+)
+
 // AuthMiddleware validates JWT tokens and API keys
 func AuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 	return authMiddlewareWithInterface(authService)
@@ -26,7 +34,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 		if authHeader != "" {
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				token := strings.TrimPrefix(authHeader, "Bearer ")
-				ctx := context.WithValue(c.Request.Context(), "token", token)
+				ctx := context.WithValue(c.Request.Context(), contextKeyToken, token)
 
 				// OCI scoped token validation path (for /v2 endpoints)
 				if strings.HasPrefix(c.Request.URL.Path, "/v2/") {
@@ -66,7 +74,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 				log.Debug().Err(err).Str("path", c.Request.URL.Path).Msg("JWT token validation failed, trying API key")
 
 				// Fall back to API key validation for Bearer tokens (Docker CLI compatibility)
-				ctx = context.WithValue(c.Request.Context(), "api_key", token)
+				ctx = context.WithValue(c.Request.Context(), contextKeyAPIKey, token)
 				user, _, err = authService.ValidateAPIKey(ctx, token)
 				if err == nil {
 					log.Debug().Str("username", user.Username).Msg("API key validation successful")
@@ -92,7 +100,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 		apiKey := c.GetHeader("X-API-Key")
 		if apiKey != "" {
 			log.Debug().Str("path", c.Request.URL.Path).Msg("Validating API key from header")
-			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
+			ctx := context.WithValue(c.Request.Context(), contextKeyAPIKey, apiKey)
 
 			user, _, err := authService.ValidateAPIKey(ctx, apiKey)
 			if err == nil {
@@ -108,7 +116,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 		nugetApiKey := c.GetHeader("X-NuGet-ApiKey")
 		if nugetApiKey != "" {
 			log.Debug().Str("path", c.Request.URL.Path).Msg("Validating NuGet API key from header")
-			ctx := context.WithValue(c.Request.Context(), "api_key", nugetApiKey)
+			ctx := context.WithValue(c.Request.Context(), contextKeyAPIKey, nugetApiKey)
 
 			user, _, err := authService.ValidateAPIKey(ctx, nugetApiKey)
 			if err == nil {
@@ -123,7 +131,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 		// Check for API key in query parameter (for some package managers)
 		if apiKey := c.Query("api_key"); apiKey != "" {
 			log.Debug().Str("path", c.Request.URL.Path).Msg("Validating API key from query parameter")
-			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
+			ctx := context.WithValue(c.Request.Context(), contextKeyAPIKey, apiKey)
 
 			user, _, err := authService.ValidateAPIKey(ctx, apiKey)
 			if err == nil {
@@ -227,33 +235,33 @@ func optionalAuthMiddlewareWithInterface(authService AuthServiceInterface) gin.H
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 			token := strings.TrimPrefix(authHeader, "Bearer ")
-			ctx := context.WithValue(c.Request.Context(), "token", token)
+			ctx := context.WithValue(c.Request.Context(), contextKeyToken, token)
 
 			// First try to validate as JWT token
 			if user, err := authService.ValidateToken(ctx, token); err == nil {
 				c.Set("user", user)
 			} else {
 				// Fall back to API key validation for Bearer tokens (Docker CLI compatibility)
-				ctx := context.WithValue(c.Request.Context(), "api_key", token)
+				ctx := context.WithValue(c.Request.Context(), contextKeyAPIKey, token)
 				if user, _, err := authService.ValidateAPIKey(ctx, token); err == nil {
 					c.Set("user", user)
 				}
 			}
 			// For optional auth, we continue even if JWT validation fails
 		} else if apiKey := c.GetHeader("X-API-Key"); apiKey != "" {
-			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
+			ctx := context.WithValue(c.Request.Context(), contextKeyAPIKey, apiKey)
 
 			if user, _, err := authService.ValidateAPIKey(ctx, apiKey); err == nil {
 				c.Set("user", user)
 			}
 		} else if apiKey := c.GetHeader("X-NuGet-ApiKey"); apiKey != "" {
-			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
+			ctx := context.WithValue(c.Request.Context(), contextKeyAPIKey, apiKey)
 
 			if user, _, err := authService.ValidateAPIKey(ctx, apiKey); err == nil {
 				c.Set("user", user)
 			}
 		} else if apiKey := c.Query("api_key"); apiKey != "" {
-			ctx := context.WithValue(c.Request.Context(), "api_key", apiKey)
+			ctx := context.WithValue(c.Request.Context(), contextKeyAPIKey, apiKey)
 
 			if user, _, err := authService.ValidateAPIKey(ctx, apiKey); err == nil {
 				c.Set("user", user)
