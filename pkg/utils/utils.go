@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- SHA-1 is required for ecosystem-compatible legacy package digests
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -80,6 +80,7 @@ func ComputeSHA256(data []byte) string {
 
 // ComputeSHA1 computes the SHA1 hash of data
 func ComputeSHA1(data []byte) string {
+	// #nosec G401 -- SHA-1 output is required by registry protocols that still expose shasum fields.
 	hash := sha1.Sum(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -95,6 +96,7 @@ func ComputeSHA256FromReader(reader io.Reader) (string, error) {
 
 // ComputeSHA1FromReader computes SHA1 hash from an io.Reader
 func ComputeSHA1FromReader(reader io.Reader) (string, error) {
+	// #nosec G401 -- SHA-1 output is required by registry protocols that still expose shasum fields.
 	hash := sha1.New()
 	if _, err := io.Copy(hash, reader); err != nil {
 		return "", err
@@ -167,9 +169,4 @@ func FormatBytes(bytes int64) string {
 // DecodeBase64 decodes a base64 encoded string
 func DecodeBase64(encoded string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(encoded)
-}
-
-// generateUploadUUID generates a UUID for upload sessions
-func generateUploadUUID() string {
-	return uuid.New().String()
 }

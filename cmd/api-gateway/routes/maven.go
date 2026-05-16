@@ -46,7 +46,7 @@ func handleMavenDownload(registryService *registry.Service) gin.HandlerFunc {
 
 		packageName := fmt.Sprintf("%s:%s", groupId, artifactId)
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "maven")
 
 		artifact, content, err := registryService.Download(ctx, "maven", packageName, version)
 		if err != nil {
@@ -84,19 +84,8 @@ func handleMavenUpload(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
-
-		contentType := c.GetHeader("Content-Type")
-		if contentType == "" {
-			if strings.HasSuffix(path, ".jar") {
-				contentType = "application/java-archive"
-			} else if strings.HasSuffix(path, ".pom") {
-				contentType = "application/xml"
-			} else {
-				contentType = "application/octet-stream"
-			}
-		}
+		ctx := context.WithValue(c.Request.Context(), registryKey, "maven")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// Parse Maven path to extract groupId, artifactId, and version
 		// Format: com/example/artifact/1.0.0/artifact-1.0.0.jar
@@ -147,7 +136,7 @@ func handleMavenHead(registryService *registry.Service) gin.HandlerFunc {
 		version := parts[len(parts)-2]
 		packageName := fmt.Sprintf("%s:%s", groupId, artifactId)
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "maven")
 
 		artifact, _, err := registryService.Download(ctx, "maven", packageName, version)
 		if err != nil {
@@ -187,8 +176,8 @@ func handleMavenDelete(registryService *registry.Service) gin.HandlerFunc {
 		version := parts[len(parts)-2]
 		packageName := fmt.Sprintf("%s:%s", groupId, artifactId)
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "maven")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "maven")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		err := registryService.Delete(ctx, "maven", packageName, version, user.ID)
 		if err != nil {

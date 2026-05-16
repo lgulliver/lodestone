@@ -503,6 +503,95 @@ func TestLocalStorage_IntegrityVerification(t *testing.T) {
 	assert.Equal(t, expectedHash, actualHash)
 }
 
+func TestValidateLocalPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		shouldError bool
+	}{
+		{name: "simple relative path", path: "artifact/file.tgz", shouldError: false},
+		{name: "empty path", path: "", shouldError: true},
+		{name: "parent traversal path", path: "../etc/passwd", shouldError: true},
+		{name: "absolute path", path: "/tmp/file", shouldError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateLocalPath(tt.path)
+			if tt.shouldError {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestResolveAndValidatePath(t *testing.T) {
+	base := t.TempDir()
+
+	tests := []struct {
+		name        string
+		path        string
+		shouldError bool
+	}{
+		{name: "normal nested path", path: "a/b/c.txt", shouldError: false},
+		{name: "path traversal", path: "../outside.txt", shouldError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved, err := resolveAndValidatePath(base, tt.path)
+			if tt.shouldError {
+				assert.Error(t, err)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.True(t, strings.HasPrefix(resolved, filepath.Clean(base)))
+		})
+	}
+}
+
+func TestLocalStorage_InvalidPathRejection(t *testing.T) {
+	storage := setupTestStorage(t)
+	ctx := context.Background()
+
+	t.Run("store rejects invalid path", func(t *testing.T) {
+		err := storage.Store(ctx, "../escape.txt", strings.NewReader("content"), "text/plain")
+		assert.Error(t, err)
+	})
+
+	t.Run("retrieve rejects invalid path", func(t *testing.T) {
+		reader, err := storage.Retrieve(ctx, "../escape.txt")
+		assert.Error(t, err)
+		assert.Nil(t, reader)
+	})
+
+	t.Run("delete rejects invalid path", func(t *testing.T) {
+		err := storage.Delete(ctx, "../escape.txt")
+		assert.Error(t, err)
+	})
+
+	t.Run("exists rejects invalid path", func(t *testing.T) {
+		exists, err := storage.Exists(ctx, "../escape.txt")
+		assert.Error(t, err)
+		assert.False(t, exists)
+	})
+
+	t.Run("get size rejects invalid path", func(t *testing.T) {
+		size, err := storage.GetSize(ctx, "../escape.txt")
+		assert.Error(t, err)
+		assert.EqualValues(t, 0, size)
+	})
+
+	t.Run("list rejects invalid prefix", func(t *testing.T) {
+		paths, err := storage.List(ctx, "../escape")
+		assert.Error(t, err)
+		assert.Nil(t, paths)
+	})
+}
+
 // Helper functions
 
 func setupTestStorage(t *testing.T) *LocalStorage {

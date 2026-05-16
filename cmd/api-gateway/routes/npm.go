@@ -240,7 +240,7 @@ func handleNPMPackageInfo(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
 
 		filter := &types.ArtifactFilter{
 			Name:     packageName,
@@ -313,7 +313,7 @@ func handleNPMPackageVersion(registryService *registry.Service) gin.HandlerFunc 
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
 
 		artifact, _, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
@@ -347,7 +347,7 @@ func handleNPMScopedPackageInfo(registryService *registry.Service) gin.HandlerFu
 		name := c.Param("name")
 		packageName := fmt.Sprintf("@%s/%s", scope, name)
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
 
 		filter := &types.ArtifactFilter{
 			Name:     packageName,
@@ -417,7 +417,7 @@ func handleNPMScopedPackageVersion(registryService *registry.Service) gin.Handle
 		version := c.Param("version")
 		packageName := fmt.Sprintf("@%s/%s", scope, name)
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
 
 		artifact, _, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
@@ -460,7 +460,7 @@ func handleNPMDownload(registryService *registry.Service) gin.HandlerFunc {
 			Str("filename", filename).
 			Msg("downloading npm package")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
 
 		artifact, content, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
@@ -499,7 +499,7 @@ func handleNPMScopedDownload(registryService *registry.Service) gin.HandlerFunc 
 		version := strings.TrimPrefix(filename, name+"-")
 		version = strings.TrimSuffix(version, ".tgz")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
 
 		artifact, content, err := registryService.Download(ctx, "npm", packageName, version)
 		if err != nil {
@@ -553,8 +553,8 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		packageName := c.Param("name")
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		log.Info().
 			Str("package_name", packageName).
@@ -664,7 +664,6 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 				// Check if this is a stable version (not a prerelease)
 				if !utils.IsPrerelease(version) {
 					// Check if there's a current latest version in the registry
-					existingVersions := make([]string, 0)
 					existingArtifacts, _, _ := registryService.List(ctx, &types.ArtifactFilter{
 						Registry: "npm",
 						Name:     packageName,
@@ -674,7 +673,6 @@ func handleNPMPublish(registryService *registry.Service) gin.HandlerFunc {
 					latestVersion := ""
 
 					for _, art := range existingArtifacts {
-						existingVersions = append(existingVersions, art.Version)
 
 						// Look for existing latest tag in metadata
 						if art.Metadata != nil {
@@ -803,8 +801,8 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		log.Info().
 			Str("package_name", packageName).
@@ -914,7 +912,6 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 				// Check if this is a stable version (not a prerelease)
 				if !utils.IsPrerelease(version) {
 					// Check if there's a current latest version in the registry
-					existingVersions := make([]string, 0)
 					existingArtifacts, _, _ := registryService.List(ctx, &types.ArtifactFilter{
 						Registry: "npm",
 						Name:     packageName,
@@ -924,7 +921,6 @@ func handleNPMScopedPublish(registryService *registry.Service) gin.HandlerFunc {
 					latestVersion := ""
 
 					for _, art := range existingArtifacts {
-						existingVersions = append(existingVersions, art.Version)
 
 						// Look for existing latest tag in metadata
 						if art.Metadata != nil {
@@ -1046,8 +1042,8 @@ func handleNPMDelete(registryService *registry.Service) gin.HandlerFunc {
 		packageName := c.Param("name")
 		rev := c.Param("rev") // npm revision parameter
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// For now, delete all versions of the package
 		// In a real implementation, you'd parse the rev to determine what to delete
@@ -1078,8 +1074,8 @@ func handleNPMScopedDelete(registryService *registry.Service) gin.HandlerFunc {
 		packageName := fmt.Sprintf("@%s/%s", scope, name)
 		rev := c.Param("rev")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		_ = rev
 
@@ -1101,7 +1097,7 @@ func handleNPMSearch(registryService *registry.Service) gin.HandlerFunc {
 		_ = c.DefaultQuery("size", "20") // TODO: implement pagination
 		_ = c.DefaultQuery("from", "0")  // TODO: implement pagination
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "npm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "npm")
 
 		filter := &types.ArtifactFilter{
 			Registry: "npm",

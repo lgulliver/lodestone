@@ -169,7 +169,7 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	// Save to database
 	if err := s.DB.Create(artifact).Error; err != nil {
 		// Try to clean up stored file on database error
-		s.Storage.Delete(ctx, artifact.StoragePath)
+		_ = s.Storage.Delete(ctx, artifact.StoragePath)
 		return nil, fmt.Errorf("failed to save artifact metadata: %w", err)
 	}
 

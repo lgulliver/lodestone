@@ -337,12 +337,6 @@ func TestDelete_Deprecated(t *testing.T) {
 	assert.Contains(t, err.Error(), "use service.Delete instead")
 }
 
-// Symbol package test data
-var mockSymbolPackageContent = []byte{
-	0x50, 0x4b, 0x03, 0x04, // ZIP header
-	// Mock ZIP content containing .pdb files
-}
-
 func TestIsSymbolPackage(t *testing.T) {
 	registry, _, _ := setupTestRegistry(t)
 
@@ -612,9 +606,9 @@ func createMockSymbolPackage(t *testing.T, files []string) []byte {
 
 		// Write some mock content
 		if strings.HasSuffix(filename, ".pdb") || strings.HasSuffix(filename, ".mdb") {
-			file.Write([]byte("mock symbol data for " + filename))
+			_, _ = file.Write([]byte("mock symbol data for " + filename))
 		} else {
-			file.Write([]byte("mock content for " + filename))
+			_, _ = file.Write([]byte("mock content for " + filename))
 		}
 	}
 
@@ -644,12 +638,12 @@ func createMockNuGetPackage(t *testing.T, name, version string) []byte {
 
 	nuspecFile, err := w.Create(name + ".nuspec")
 	assert.NoError(t, err)
-	nuspecFile.Write([]byte(nuspecContent))
+	_, _ = nuspecFile.Write([]byte(nuspecContent))
 
 	// Create some mock content files
 	dllFile, err := w.Create("lib/net48/" + name + ".dll")
 	assert.NoError(t, err)
-	dllFile.Write([]byte("mock dll content"))
+	_, _ = dllFile.Write([]byte("mock dll content"))
 
 	err = w.Close()
 	assert.NoError(t, err)

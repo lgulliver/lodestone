@@ -204,13 +204,12 @@ func benchmarkMixedWorkload(t *testing.T, storage storage.BlobStorage) Benchmark
 	startTime := time.Now()
 	var totalBytes int64
 	totalOps := 200
-	rand.Seed(time.Now().UnixNano())
 
 	// Pre-populate some files for read/exists operations
 	for i := 0; i < totalOps/4; i++ {
 		content := fmt.Sprintf("Mixed workload pre-populated data %d", i)
 		path := fmt.Sprintf("bench_mixed/existing_%d.txt", i)
-		storage.Store(ctx, path, strings.NewReader(content), "text/plain")
+		_ = storage.Store(ctx, path, strings.NewReader(content), "text/plain")
 	}
 
 	for i := 0; i < totalOps; i++ {
@@ -236,11 +235,11 @@ func benchmarkMixedWorkload(t *testing.T, storage storage.BlobStorage) Benchmark
 
 		case 2: // Exists check
 			path := fmt.Sprintf("bench_mixed/existing_%d.txt", rand.Intn(totalOps/4))
-			storage.Exists(ctx, path)
+			_, _ = storage.Exists(ctx, path)
 
 		case 3: // Size check
 			path := fmt.Sprintf("bench_mixed/existing_%d.txt", rand.Intn(totalOps/4))
-			storage.GetSize(ctx, path)
+			_, _ = storage.GetSize(ctx, path)
 		}
 	}
 

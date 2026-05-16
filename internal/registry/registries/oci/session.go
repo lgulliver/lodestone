@@ -106,7 +106,9 @@ func (sm *SessionManager) AppendChunk(ctx context.Context, sessionID string, dat
 		}
 
 		existingData, err := io.ReadAll(existing)
-		existing.Close()
+		if closeErr := existing.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to close existing data stream: %w", closeErr)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to read existing data: %w", err)
 		}
@@ -176,7 +178,7 @@ func (sm *SessionManager) CompleteUpload(ctx context.Context, sessionID, expecte
 	}
 
 	// Clean up temp file
-	sm.storage.Delete(ctx, session.TempPath)
+	_ = sm.storage.Delete(ctx, session.TempPath)
 
 	log.Info().
 		Str("session_id", sessionID).
@@ -199,7 +201,7 @@ func (sm *SessionManager) CancelUpload(ctx context.Context, sessionID string) er
 	}
 
 	// Clean up temp file
-	sm.storage.Delete(ctx, session.TempPath)
+	_ = sm.storage.Delete(ctx, session.TempPath)
 
 	// Remove session
 	delete(sm.sessions, sessionID)
@@ -249,7 +251,7 @@ func (sm *SessionManager) cleanupExpiredSessions() {
 		if lastUpdate.Before(expiry) {
 			expiredSessions = append(expiredSessions, sessionID)
 			// Clean up temp file
-			sm.storage.Delete(context.Background(), tempPath)
+			_ = sm.storage.Delete(context.Background(), tempPath)
 		}
 	}
 
