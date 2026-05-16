@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 
+	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/pkg/types"
 )
 
@@ -10,4 +11,6 @@ import (
 type AuthServiceInterface interface {
 	ValidateToken(ctx context.Context, token string) (*types.User, error)
 	ValidateAPIKey(ctx context.Context, apiKey string) (*types.User, *types.APIKey, error)
+	ValidateOCIToken(ctx context.Context, token string) (*types.User, *auth.OCITokenClaims, error)
+	AuthorizeOCITokenScope(claims *auth.OCITokenClaims, repository, action string) error
 }

@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 
+	"github.com/lgulliver/lodestone/internal/storage/cloud"
 	"github.com/lgulliver/lodestone/pkg/config"
 )
 
@@ -22,14 +23,12 @@ func (sf *StorageFactory) CreateStorage() (BlobStorage, error) {
 	case "local":
 		return NewLocalStorage(sf.config.LocalPath)
 	case "s3":
-		// TODO: Implement S3 storage
-		return nil, fmt.Errorf("S3 storage not yet implemented")
+		return cloud.NewS3Storage(sf.config)
 	case "gcs":
 		// TODO: Implement GCS storage
 		return nil, fmt.Errorf("GCS storage not yet implemented")
 	case "azure":
-		// TODO: Implement Azure storage
-		return nil, fmt.Errorf("Azure storage not yet implemented")
+		return cloud.NewAzureBlobStorage(sf.config)
 	default:
 		return nil, fmt.Errorf("unsupported storage type: %s", sf.config.Type)
 	}

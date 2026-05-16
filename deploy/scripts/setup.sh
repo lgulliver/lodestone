@@ -48,13 +48,15 @@ check_prerequisites() {
         print_success "Docker is installed"
     fi
     
-    # Check Docker Compose
-    if ! command -v docker-compose >/dev/null 2>&1; then
+    # Check Docker Compose (support both plugin and legacy binary)
+    if docker compose version >/dev/null 2>&1; then
+        print_success "Docker Compose plugin is installed"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        print_success "Docker Compose legacy binary is installed"
+    else
         print_error "Docker Compose is not installed"
         echo "Please install Docker Compose: https://docs.docker.com/compose/install/"
         ((missing++))
-    else
-        print_success "Docker Compose is installed"
     fi
     
     # Check if Docker daemon is running
@@ -112,7 +114,18 @@ REDIS_DB=0
 
 # Storage (Local filesystem for development)
 STORAGE_TYPE=local
-LOCAL_STORAGE_PATH=./data/artifacts
+STORAGE_LOCAL_PATH=./data/artifacts
+
+# Optional cloud storage simulation settings for development
+STORAGE_S3_BUCKET=lodestone-artifacts
+STORAGE_S3_REGION=us-east-1
+STORAGE_S3_ACCESS_KEY=test
+STORAGE_S3_SECRET_KEY=test
+STORAGE_S3_ENDPOINT=http://localhost:4566
+STORAGE_S3_FORCE_PATH_STYLE=true
+STORAGE_AZURE_CONTAINER=lodestone-artifacts
+STORAGE_AZURE_CONNECTION_STRING=UseDevelopmentStorage=true
+STORAGE_AZURE_ENDPOINT=http://localhost:10000/devstoreaccount1
 
 # Authentication
 JWT_SECRET=local-development-secret-key-not-for-production-use-only
@@ -224,7 +237,7 @@ show_next_steps() {
             echo ""
             echo "  3. Access services:"
             echo "     • API Gateway: http://localhost:8080"
-            echo "     • PostgreSQL: localhost:5432 (user: lodestone, password: lodestone)"
+            echo "     • PostgreSQL: localhost:5432 (user: lodestone, password: password)"
             echo "     • Redis: localhost:6379"
             ;;
         "dev")
@@ -237,9 +250,10 @@ show_next_steps() {
             echo ""
             echo "  3. Access services:"
             echo "     • API Gateway: http://localhost:8080"
-            echo "     • PostgreSQL: localhost:5432 (user: lodestone, password: password)"
+            echo "     • PostgreSQL: localhost:5432 (user: lodestone, password: lodestone)"
             echo "     • Redis: localhost:6379"
-            echo "     • MinIO Console: http://localhost:9001 (minioadmin/minioadmin)"
+            echo "     • LocalStack S3 Endpoint: http://localhost:4566"
+            echo "     • Azurite Blob Endpoint: http://localhost:10000"
             ;;
         "prod")
             echo "Next steps for production:"
@@ -278,7 +292,7 @@ Usage: $0 <environment> [options]
 
 Environments:
     local       Local development (minimal setup)
-    dev         Development with MinIO S3 simulation  
+    dev         Development with LocalStack (S3) and Azurite (Azure) simulation
     prod        Production deployment
 
 Options:

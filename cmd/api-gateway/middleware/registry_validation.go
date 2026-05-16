@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lgulliver/lodestone/internal/registry"
@@ -56,41 +57,51 @@ func RegistryValidationMiddleware(settingsService *registry.RegistrySettingsServ
 func extractRegistryType(c *gin.Context) string {
 	// Check if registry is specified as a URL parameter
 	if registry := c.Param("registry"); registry != "" {
-		return registry
+		return normalizeRegistryType(registry)
 	}
 
 	// Check if registry is specified as a query parameter
 	if registry := c.Query("registry"); registry != "" {
-		return registry
+		return normalizeRegistryType(registry)
 	}
 
-	// Extract from path patterns
-	path := c.Request.URL.Path
-
-	// Common registry path patterns
-	patterns := map[string]string{
-		"/v1/nuget":    "nuget",
-		"/v1/npm":      "npm",
-		"/v1/maven":    "maven",
-		"/v1/cargo":    "cargo",
-		"/v1/docker":   "docker",
-		"/v1/helm":     "helm",
-		"/v1/rubygems": "rubygems",
-		"/v1/opa":      "opa",
-		"/v1/go":       "go",
-		"/v2/":         "docker", // Docker registry v2 API
+	path := strings.Trim(c.Request.URL.Path, "/")
+	if path == "" {
+		return ""
 	}
 
-	for pattern, registryType := range patterns {
-		if containsPath(path, pattern) {
-			return registryType
+	segments := strings.Split(path, "/")
+	if len(segments) == 0 {
+		return ""
+	}
+
+	// Root OCI/Docker API routes.
+	if segments[0] == "v2" {
+		return "oci"
+	}
+
+	// API routes are mounted under /api/v1.
+	if len(segments) >= 3 && segments[0] == "api" && segments[1] == "v1" {
+		if segments[2] == "v2" {
+			return "oci"
 		}
+		return normalizeRegistryType(segments[2])
 	}
 
 	return ""
 }
 
-// containsPath checks if the path contains the pattern
-func containsPath(path, pattern string) bool {
-	return len(path) >= len(pattern) && path[:len(pattern)] == pattern
+func normalizeRegistryType(registryType string) string {
+	registryType = strings.ToLower(strings.TrimSpace(registryType))
+
+	switch registryType {
+	case "nuget", "npm", "maven", "cargo", "helm", "rubygems", "opa", "go", "oci":
+		return registryType
+	case "docker":
+		return "oci"
+	case "gems":
+		return "rubygems"
+	default:
+		return ""
+	}
 }

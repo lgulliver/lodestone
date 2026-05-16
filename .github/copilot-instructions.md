@@ -141,7 +141,7 @@ type Handler interface {
 - Use testify for assertions
 - Mock external dependencies
 - Test error conditions
-- Aim for >80% coverage
+- Maintain a minimum of **80% coverage on the configured coverage scope** (enforced by `make test` / `coverage-check`)
 
 ```go
 func TestServiceMethod(t *testing.T) {
@@ -242,7 +242,9 @@ log.Info().
 
 ### Code Quality
 - Run `go vet` and `go lint`
+- Run static analysis with open-source tooling (`gosec`, `govulncheck`)
 - Maintain test coverage
+- Keep total coverage at or above **80%**
 - Use consistent formatting with `go fmt`
 - Document public APIs
 - If an error is made during generation, correct it but make note of the change
@@ -250,7 +252,7 @@ log.Info().
 ### Continuous Integration
 - Use GitHub Actions for CI
 - Run tests on every push
-- Lint and vet code
+- Enforce `fmt-check`, `go vet`, strict linting, and static analysis in CI
 - Build for containers
 
 ## Common Patterns to Follow

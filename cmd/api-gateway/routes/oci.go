@@ -66,7 +66,7 @@ func OCIRoutes(api *gin.RouterGroup, registryService *registry.Service, authServ
 }
 
 // OCIRootRoutes sets up OCI (Docker) registry routes at root level for Docker CLI compatibility
-func OCIRootRoutes(router *gin.Engine, registryService *registry.Service, authService *auth.Service) {
+func OCIRootRoutes(router gin.IRoutes, registryService *registry.Service, authService *auth.Service) {
 	// Use a catch-all route for all OCI operations including the base endpoint
 	router.Any("/v2/*path", handleOCIRequest(registryService, authService))
 }
@@ -204,6 +204,10 @@ func handleOCIManifestPut(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
+		if !ensureOCIPublishPermission(c, registryService, user, name) {
+			return
+		}
+
 		// Get the OCI registry handler
 		handler, err := registryService.GetRegistry("oci")
 		if err != nil {
@@ -270,8 +274,12 @@ func handleOCIManifestDelete(registryService *registry.Service) gin.HandlerFunc 
 			return
 		}
 
-		name := c.Param("name")
+		name := extractRepositoryName(c)
 		reference := c.Param("reference")
+
+		if !ensureOCIDeletePermission(c, registryService, user, name) {
+			return
+		}
 
 		// Get the OCI registry handler
 		handler, err := registryService.GetRegistry("oci")
@@ -524,8 +532,12 @@ func handleOCIBlobDelete(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		name := c.Param("name")
+		name := extractRepositoryName(c)
 		digest := c.Param("digest")
+
+		if !ensureOCIDeletePermission(c, registryService, user, name) {
+			return
+		}
 
 		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
 		ctx = context.WithValue(ctx, userIDKey, user.ID)
@@ -578,6 +590,10 @@ func handleOCIBlobUploadStart(registryService *registry.Service) gin.HandlerFunc
 
 		name := extractRepositoryName(c)
 
+		if !ensureOCIPublishPermission(c, registryService, user, name) {
+			return
+		}
+
 		// Get the OCI registry handler
 		handler, err := registryService.GetRegistry("oci")
 		if err != nil {
@@ -626,12 +642,13 @@ func handleOCIBlobUploadStart(registryService *registry.Service) gin.HandlerFunc
 // @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobUploadChunk(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, exists := middleware.GetUserFromContext(c)
+		user, exists := middleware.GetUserFromContext(c)
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
+		name := extractRepositoryName(c)
 		sessionID := c.Param("uuid")
 		contentRange := c.GetHeader("Content-Range")
 
@@ -648,8 +665,13 @@ func handleOCIBlobUploadChunk(registryService *registry.Service) gin.HandlerFunc
 			return
 		}
 
+		session, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
+		if !authorized {
+			return
+		}
+
 		// Append chunk to session
-		session, err := ociRegistry.AppendBlobChunk(c.Request.Context(), sessionID, c.Request.Body, contentRange)
+		session, err = ociRegistry.AppendBlobChunk(c.Request.Context(), sessionID, c.Request.Body, contentRange)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("upload session error: %v", err)})
 			return
@@ -690,7 +712,7 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 			return
 		}
 
-		name := c.Param("name")
+		name := extractRepositoryName(c)
 		sessionID := c.Param("uuid")
 		digest := c.Query("digest")
 
@@ -714,6 +736,11 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 		ociRegistry, ok := handler.(*oci.Registry)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid registry handler type"})
+			return
+		}
+
+		session, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
+		if !authorized {
 			return
 		}
 
@@ -778,12 +805,13 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 // @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobUploadCancel(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, exists := middleware.GetUserFromContext(c)
+		user, exists := middleware.GetUserFromContext(c)
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
+		name := extractRepositoryName(c)
 		sessionID := c.Param("uuid")
 
 		// Get the OCI registry handler
@@ -796,6 +824,11 @@ func handleOCIBlobUploadCancel(registryService *registry.Service) gin.HandlerFun
 		ociRegistry, ok := handler.(*oci.Registry)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid registry handler type"})
+			return
+		}
+
+		_, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
+		if !authorized {
 			return
 		}
 
@@ -827,12 +860,13 @@ func handleOCIBlobUploadCancel(registryService *registry.Service) gin.HandlerFun
 // @Failure 500 {object} types.APIResponse "Internal server error"
 func handleOCIBlobUploadStatus(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, exists := middleware.GetUserFromContext(c)
+		user, exists := middleware.GetUserFromContext(c)
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
+		name := extractRepositoryName(c)
 		sessionID := c.Param("uuid")
 
 		// Get the OCI registry handler
@@ -848,10 +882,9 @@ func handleOCIBlobUploadStatus(registryService *registry.Service) gin.HandlerFun
 			return
 		}
 
-		// Get upload session status
-		session, err := ociRegistry.GetBlobUploadStatus(sessionID)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "upload session not found"})
+		// Validate upload session ownership and package publish access.
+		session, authorized := ensureOCIBlobSessionPublishPermission(c, registryService, ociRegistry, user, sessionID, name)
+		if !authorized {
 			return
 		}
 
@@ -864,6 +897,57 @@ func handleOCIBlobUploadStatus(registryService *registry.Service) gin.HandlerFun
 			Int64("current_size", session.Size).
 			Msg("Retrieved blob upload status")
 	}
+
+}
+
+func ensureOCIPublishPermission(c *gin.Context, registryService *registry.Service, user *types.User, repository string) bool {
+	canPublish, err := registryService.Ownership.CanUserPublish(c.Request.Context(), "oci", repository, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate ownership permissions"})
+		return false
+	}
+	if !canPublish {
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions to upload to this repository"})
+		return false
+	}
+	return true
+}
+
+func ensureOCIDeletePermission(c *gin.Context, registryService *registry.Service, user *types.User, repository string) bool {
+	canDelete, err := registryService.Ownership.CanUserDelete(c.Request.Context(), "oci", repository, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate ownership permissions"})
+		return false
+	}
+	if !canDelete {
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions to delete from this repository"})
+		return false
+	}
+	return true
+}
+
+func ensureOCIBlobSessionPublishPermission(c *gin.Context, registryService *registry.Service, ociRegistry *oci.Registry, user *types.User, sessionID, requestedRepository string) (*oci.UploadSession, bool) {
+	session, err := ociRegistry.GetBlobUploadStatus(sessionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upload session not found"})
+		return nil, false
+	}
+
+	if session.Repository != requestedRepository {
+		c.JSON(http.StatusForbidden, gin.H{"error": "upload session does not match repository"})
+		return nil, false
+	}
+
+	if session.UserID != user.ID.String() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions for upload session"})
+		return nil, false
+	}
+
+	if !ensureOCIPublishPermission(c, registryService, user, session.Repository) {
+		return nil, false
+	}
+
+	return session, true
 }
 
 // @Summary List Repository Tags
@@ -1202,14 +1286,15 @@ func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
 
 		ctx := context.WithValue(c.Request.Context(), dockerAuthKey, true)
 
-		// Try to authenticate with username/password as API key
-		// Docker login typically uses username as anything and password as API key
+		// Try to authenticate with username/password as API key.
+		// Docker login typically uses username as anything and password as API key.
 		var user *types.User
+		var apiKey *types.APIKey
 		var err error
 
 		if password != "" {
 			// Try password as API key first
-			user, _, err = authService.ValidateAPIKey(ctx, password)
+			user, apiKey, err = authService.ValidateAPIKey(ctx, password)
 			if err != nil {
 				// If API key validation fails, try traditional login
 				loginReq := &types.LoginRequest{
@@ -1242,6 +1327,20 @@ func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
 
 		// Authentication successful
 		c.Header("Docker-Distribution-API-Version", "registry/2.0")
+		service := resolveOCIService(c.Query("service"), c.Request.Host)
+		scopes := defaultOCIScopesForAPIKey(apiKey)
+		token, expiresAt, tokenErr := authService.GenerateOCIToken(user.ID, service, scopes, time.Hour)
+		if tokenErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"errors": []gin.H{
+					{
+						"code":    "UNKNOWN",
+						"message": "failed to issue token",
+					},
+				},
+			})
+			return
+		}
 
 		// Log successful authentication
 		log.Info().
@@ -1250,10 +1349,11 @@ func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
 			Msg("Docker authentication successful")
 
 		c.JSON(http.StatusOK, gin.H{
-			"access_token": password, // Return the API key as access token
-			"scope":        "repository:*:*",
-			"issued_at":    time.Now().Format(time.RFC3339),
-			"expires_in":   3600,
+			"token":        token,
+			"access_token": token,
+			"scope":        strings.Join(scopes, " "),
+			"issued_at":    time.Now().UTC().Format(time.RFC3339),
+			"expires_in":   int(time.Until(expiresAt).Seconds()),
 		})
 	}
 }
@@ -1273,8 +1373,8 @@ func handleDockerAuth(authService *auth.Service) gin.HandlerFunc {
 func handleDockerToken(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Handle Docker token requests (OAuth2-like flow)
-		service := c.Query("service")
-		scope := c.Query("scope")
+		service := resolveOCIService(c.Query("service"), c.Request.Host)
+		requestedScopes := parseOCIRequestedScopes(c)
 
 		// Check for Basic Auth
 		username, password, hasAuth := c.Request.BasicAuth()
@@ -1297,11 +1397,12 @@ func handleDockerToken(authService *auth.Service) gin.HandlerFunc {
 
 		// Authenticate using API key
 		var user *types.User
+		var apiKey *types.APIKey
 		var err error
 
 		if password != "" {
 			// Try password as API key first
-			user, _, err = authService.ValidateAPIKey(ctx, password)
+			user, apiKey, err = authService.ValidateAPIKey(ctx, password)
 			if err != nil {
 				// If API key validation fails, try traditional login
 				loginReq := &types.LoginRequest{
@@ -1331,23 +1432,154 @@ func handleDockerToken(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		// Generate a simple token response
-		// In a full implementation, this would be a proper JWT with the requested scope
+		grantedScopes, scopeErr := resolveGrantedOCIScopes(requestedScopes, apiKey)
+		if scopeErr != nil {
+			c.Header("Docker-Distribution-API-Version", "registry/2.0")
+			c.JSON(http.StatusForbidden, gin.H{
+				"errors": []gin.H{
+					{
+						"code":    "DENIED",
+						"message": scopeErr.Error(),
+					},
+				},
+			})
+			return
+		}
+
+		token, expiresAt, tokenErr := authService.GenerateOCIToken(user.ID, service, grantedScopes, time.Hour)
+		if tokenErr != nil {
+			c.Header("Docker-Distribution-API-Version", "registry/2.0")
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"errors": []gin.H{
+					{
+						"code":    "UNKNOWN",
+						"message": "failed to issue token",
+					},
+				},
+			})
+			return
+		}
+
 		c.Header("Docker-Distribution-API-Version", "registry/2.0")
 		c.JSON(http.StatusOK, gin.H{
-			"token":        password, // Use API key as token
-			"access_token": password,
-			"expires_in":   3600,
-			"issued_at":    time.Now().Format(time.RFC3339),
-			"scope":        scope,
+			"token":        token,
+			"access_token": token,
+			"expires_in":   int(time.Until(expiresAt).Seconds()),
+			"issued_at":    time.Now().UTC().Format(time.RFC3339),
+			"scope":        strings.Join(grantedScopes, " "),
 		})
 
 		// Log successful authentication
 		log.Info().
 			Str("username", username).
 			Str("service", service).
-			Str("scope", scope).
+			Str("scope", strings.Join(grantedScopes, " ")).
 			Str("user_id", user.ID.String()).
 			Msg("Docker token issued successfully")
 	}
+}
+
+func resolveOCIService(service, host string) string {
+	service = strings.TrimSpace(service)
+	if service != "" {
+		return service
+	}
+	host = strings.TrimSpace(host)
+	if host != "" {
+		return host
+	}
+	return "registry"
+}
+
+func parseOCIRequestedScopes(c *gin.Context) []string {
+	values := c.QueryArray("scope")
+	if len(values) > 0 {
+		return values
+	}
+	if scope := c.Query("scope"); scope != "" {
+		return []string{scope}
+	}
+	return nil
+}
+
+func resolveGrantedOCIScopes(requestedScopes []string, apiKey *types.APIKey) ([]string, error) {
+	if len(requestedScopes) == 0 {
+		return defaultOCIScopesForAPIKey(apiKey), nil
+	}
+
+	granted := make([]string, 0, len(requestedScopes))
+	for _, requestedScope := range requestedScopes {
+		parts := strings.Split(requestedScope, ":")
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("invalid scope %q", requestedScope)
+		}
+		if strings.TrimSpace(parts[0]) != "repository" || strings.TrimSpace(parts[1]) == "" {
+			return nil, fmt.Errorf("invalid scope %q", requestedScope)
+		}
+
+		actions := strings.Split(parts[2], ",")
+		hasAction := false
+		for _, action := range actions {
+			action = strings.TrimSpace(action)
+			if action == "" {
+				continue
+			}
+			if action != "pull" && action != "push" && action != "*" {
+				return nil, fmt.Errorf("invalid scope action %q", action)
+			}
+			if !apiKeyAllowsOCIAction(apiKey, action) {
+				return nil, fmt.Errorf("insufficient permissions for requested scope")
+			}
+			hasAction = true
+		}
+		if !hasAction {
+			return nil, fmt.Errorf("invalid scope %q", requestedScope)
+		}
+
+		granted = append(granted, requestedScope)
+	}
+
+	return granted, nil
+}
+
+func defaultOCIScopesForAPIKey(apiKey *types.APIKey) []string {
+	if apiKey == nil {
+		return []string{"repository:*:pull,push"}
+	}
+	if apiKeyAllowsOCIAction(apiKey, "push") {
+		return []string{"repository:*:pull,push"}
+	}
+	return []string{"repository:*:pull"}
+}
+
+func apiKeyAllowsOCIAction(apiKey *types.APIKey, action string) bool {
+	if apiKey == nil {
+		return true
+	}
+
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action == "" {
+		return false
+	}
+
+	for _, permission := range apiKey.Permissions {
+		permission = strings.ToLower(strings.TrimSpace(permission))
+		if permission == "" {
+			continue
+		}
+		if permission == "admin" || permission == "*" {
+			return true
+		}
+		if action == "pull" && (permission == "read" || permission == "pull" || permission == "write" || permission == "push") {
+			return true
+		}
+		if action == "push" && (permission == "write" || permission == "push" || permission == "delete") {
+			return true
+		}
+		if action == "*" && (permission == "write" || permission == "push") {
+			return true
+		}
+	}
+
+	return false
 }

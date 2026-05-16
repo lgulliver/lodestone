@@ -33,3 +33,6 @@ This repository uses specialist agent definitions under `.claude/agents/`.
 - **test-reliability-engineer**: integration/e2e strategy, regression prevention, failure reproduction.
 - **docs-release-engineer**: API docs quality, CI/release workflows, operational runbooks.
 
+## Quality Gate
+- Maintain a minimum of **80% coverage on the configured coverage scope**.
+- Use `make test` (which runs `coverage-check`) to enforce the threshold.

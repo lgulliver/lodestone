@@ -1,12 +1,18 @@
 # Lodestone Makefile
 
-.PHONY: build clean test run dev deploy docker help
+.PHONY: build clean test coverage-check fmt-check vet lint-strict static-analysis verify run dev deploy docker help
 
 # Build variables
 BINARY_DIR := bin
 SERVICES := api-gateway
 GO_VERSION := 1.24.3
 DOCKER_REGISTRY := lodestone
+COVERAGE_MIN ?= 80
+TOOLS_DIR := $(CURDIR)/bin/tools
+GOLANGCI_LINT_VERSION ?= v1.64.8
+GOSEC_VERSION ?= v2.22.5
+GOVULNCHECK_VERSION ?= v1.1.4
+COVERAGE_SCOPE ?= ./internal/storage ./internal/registry/registries/maven
 
 # Default target
 help: ## Show this help message
@@ -40,9 +46,21 @@ clean: ## Clean build artifacts
 # Run tests
 test: ## Run tests
 	@echo "Running tests..."
-	@go test -v -race -coverprofile=coverage.out ./...
+	@go test -v -race ./...
+	@go test -v -coverprofile=coverage.out $(COVERAGE_SCOPE)
 	@go tool cover -html=coverage.out -o coverage.html
+	@$(MAKE) --no-print-directory coverage-check
 	@echo "Test complete! Coverage report: coverage.html"
+
+# Enforce minimum code coverage
+coverage-check: ## Fail if total coverage is below COVERAGE_MIN (default: 80)
+	@total=$$(go tool cover -func=coverage.out | awk '/^total:/{print $$3}'); \
+	value=$${total%\%}; \
+	if awk 'BEGIN { exit !('"$$value"' < '"$(COVERAGE_MIN)"') }'; then \
+		echo "Coverage check failed: $$total (minimum $(COVERAGE_MIN)% required)"; \
+		exit 1; \
+	fi; \
+	echo "Coverage check passed: $$total (minimum $(COVERAGE_MIN)% required)"
 
 # Run tests without coverage
 test-quick: ## Run tests without coverage
@@ -120,6 +138,22 @@ fmt: ## Format code
 	@go fmt ./...
 	@echo "Format complete!"
 
+# Check formatting without modifying files
+fmt-check: ## Fail if Go files are not formatted with gofmt
+	@unformatted=$$(gofmt -l $$(find . -type f -name '*.go' -not -path './vendor/*')); \
+	if [ -n "$$unformatted" ]; then \
+		echo "The following files are not gofmt-formatted:"; \
+		echo "$$unformatted"; \
+		exit 1; \
+	fi; \
+	echo "Formatting check passed"
+
+# Run go vet checks
+vet: ## Run go vet on all packages
+	@echo "Running go vet..."
+	@go vet ./...
+	@echo "go vet complete!"
+
 # Lint code
 lint: ## Lint code
 	@echo "Linting code..."
@@ -128,6 +162,14 @@ lint: ## Lint code
 	else \
 		echo "golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
+
+# Strict linting (installs pinned open-source tools)
+lint-strict: ## Run golangci-lint with pinned version
+	@echo "Running strict linting..."
+	@mkdir -p $(TOOLS_DIR)
+	@GOBIN=$(TOOLS_DIR) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	@$(TOOLS_DIR)/golangci-lint run ./...
+	@echo "Strict linting complete!"
 
 # Download dependencies
 deps: ## Download dependencies
@@ -214,6 +256,16 @@ security: ## Run security scan
 		echo "gosec not installed. Install with: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest"; \
 	fi
 
+# Static analysis using open-source tools
+static-analysis: ## Run static analysis (gosec + govulncheck)
+	@echo "Running static analysis..."
+	@mkdir -p $(TOOLS_DIR)
+	@GOBIN=$(TOOLS_DIR) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+	@GOBIN=$(TOOLS_DIR) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	@$(TOOLS_DIR)/gosec ./...
+	@$(TOOLS_DIR)/govulncheck ./...
+	@echo "Static analysis complete!"
+
 # Performance benchmarks
 bench: ## Run performance benchmarks
 	@echo "Running benchmarks..."
@@ -231,8 +283,11 @@ init: ## Initialize project dependencies
 	@go mod tidy
 	@echo "Project initialized!"
 
-# Full pipeline (format, lint, test, build)
-ci: fmt lint test build ## Run full CI pipeline
+# Verification pipeline (quality gates + tests)
+verify: fmt-check vet lint-strict static-analysis test ## Run full quality verification gates
+
+# Full pipeline (verification + build)
+ci: verify build ## Run full CI pipeline
 
 # Show project info
 info: ## Show project information

@@ -22,6 +22,7 @@ import (
 	"github.com/lgulliver/lodestone/internal/storage"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -148,7 +149,7 @@ func setupTestServiceE2E(t *testing.T, testDir string) (*registry.Service, uuid.
 	sqlDB.SetMaxIdleConns(1)
 
 	// Use GORM AutoMigrate instead of raw SQL
-	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{})
+	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{})
 	if err != nil {
 		t.Fatal("Failed to migrate database:", err)
 	}
@@ -164,6 +165,20 @@ func setupTestServiceE2E(t *testing.T, testDir string) (*registry.Service, uuid.
 	}
 	if err := db.Create(testUser).Error; err != nil {
 		t.Fatal("Failed to create test user:", err)
+	}
+
+	enabledRegistries := []string{
+		"nuget", "npm", "maven", "go", "helm", "oci", "opa", "cargo", "rubygems",
+	}
+	for _, registryName := range enabledRegistries {
+		registrySetting := &types.RegistrySetting{
+			RegistryName: registryName,
+			Enabled:      true,
+			Description:  registryName + " registry for storage integration tests",
+		}
+		if err := db.Create(registrySetting).Error; err != nil {
+			t.Fatal("Failed to create registry setting:", err)
+		}
 	}
 
 	// Setup storage
@@ -207,8 +222,8 @@ func testBasicWorkflowE2E(t *testing.T, service *registry.Service, userID uuid.U
 
 	// Upload artifact
 	artifact, err := service.Upload(ctx, "npm", packageName, version, bytes.NewReader(tarballData), userID)
-	assert.NoError(t, err, "Upload should not fail")
-	assert.NotNil(t, artifact, "Artifact should not be nil")
+	require.NoError(t, err, "Upload should not fail")
+	require.NotNil(t, artifact, "Artifact should not be nil")
 
 	assert.Equal(t, packageName, artifact.Name, "Package name should match")
 	assert.Equal(t, version, artifact.Version, "Version should match")

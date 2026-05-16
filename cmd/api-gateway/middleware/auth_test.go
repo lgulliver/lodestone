@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	authsvc "github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -40,6 +41,26 @@ func (m *MockAuthService) ValidateAPIKey(ctx context.Context, apiKey string) (*t
 	}
 
 	return user, key, args.Error(2)
+}
+
+func (m *MockAuthService) ValidateOCIToken(ctx context.Context, token string) (*types.User, *authsvc.OCITokenClaims, error) {
+	args := m.Called(ctx, token)
+	var user *types.User
+	var claims *authsvc.OCITokenClaims
+
+	if args.Get(0) != nil {
+		user = args.Get(0).(*types.User)
+	}
+	if args.Get(1) != nil {
+		claims = args.Get(1).(*authsvc.OCITokenClaims)
+	}
+
+	return user, claims, args.Error(2)
+}
+
+func (m *MockAuthService) AuthorizeOCITokenScope(claims *authsvc.OCITokenClaims, repository, action string) error {
+	args := m.Called(claims, repository, action)
+	return args.Error(0)
 }
 
 func TestAuthMiddleware_ValidBearerToken(t *testing.T) {
@@ -77,6 +98,107 @@ func TestAuthMiddleware_ValidBearerToken(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, capturedNext)
 	assert.Equal(t, user, capturedUser)
+	mockAuth.AssertExpectations(t)
+}
+
+func TestAuthMiddleware_ValidOCIScopedToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mockAuth := new(MockAuthService)
+	user := &types.User{
+		ID:       uuid.New(),
+		Username: "oci-user",
+		Email:    "oci@example.com",
+	}
+	claims := &authsvc.OCITokenClaims{
+		TokenType: "oci-registry",
+		UserID:    user.ID.String(),
+		Service:   "registry",
+	}
+
+	mockAuth.On("ValidateOCIToken", mock.Anything, "oci-scoped-token").Return(user, claims, nil)
+	mockAuth.On("AuthorizeOCITokenScope", claims, "library/alpine", "pull").Return(nil)
+
+	router := gin.New()
+	router.Use(authMiddlewareWithInterface(mockAuth))
+	router.GET("/v2/library/alpine/manifests/latest", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/library/alpine/manifests/latest", nil)
+	req.Header.Set("Authorization", "Bearer oci-scoped-token")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	mockAuth.AssertNotCalled(t, "ValidateToken", mock.Anything, mock.Anything)
+	mockAuth.AssertNotCalled(t, "ValidateAPIKey", mock.Anything, mock.Anything)
+	mockAuth.AssertExpectations(t)
+}
+
+func TestAuthMiddleware_OCIScopedTokenInsufficientScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mockAuth := new(MockAuthService)
+	user := &types.User{
+		ID:       uuid.New(),
+		Username: "oci-user",
+		Email:    "oci@example.com",
+	}
+	claims := &authsvc.OCITokenClaims{
+		TokenType: "oci-registry",
+		UserID:    user.ID.String(),
+		Service:   "registry",
+	}
+
+	mockAuth.On("ValidateOCIToken", mock.Anything, "oci-scoped-token").Return(user, claims, nil)
+	mockAuth.On("AuthorizeOCITokenScope", claims, "library/alpine", "push").Return(errors.New("insufficient OCI token scope"))
+
+	router := gin.New()
+	router.Use(authMiddlewareWithInterface(mockAuth))
+	router.PUT("/v2/library/alpine/manifests/latest", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/v2/library/alpine/manifests/latest", nil)
+	req.Header.Set("Authorization", "Bearer oci-scoped-token")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "insufficient scope")
+	mockAuth.AssertNotCalled(t, "ValidateAPIKey", mock.Anything, mock.Anything)
+	mockAuth.AssertExpectations(t)
+}
+
+func TestAuthMiddleware_OCINonScopedTokenFallsBackToJWT(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mockAuth := new(MockAuthService)
+	user := &types.User{
+		ID:       uuid.New(),
+		Username: "jwt-user",
+		Email:    "jwt@example.com",
+	}
+
+	mockAuth.On("ValidateOCIToken", mock.Anything, "regular-jwt").Return(nil, nil, authsvc.ErrNotOCIToken)
+	mockAuth.On("ValidateToken", mock.Anything, "regular-jwt").Return(user, nil)
+
+	router := gin.New()
+	router.Use(authMiddlewareWithInterface(mockAuth))
+	router.GET("/v2/library/alpine/manifests/latest", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/library/alpine/manifests/latest", nil)
+	req.Header.Set("Authorization", "Bearer regular-jwt")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 	mockAuth.AssertExpectations(t)
 }
 

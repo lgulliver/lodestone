@@ -1,14 +1,25 @@
 package routes
 
 import (
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lgulliver/lodestone/internal/auth"
+	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/internal/registry"
+	"github.com/lgulliver/lodestone/pkg/config"
+	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // TestOCIRootRoutes verifies that OCI root routes can be registered without panicking
@@ -114,4 +125,168 @@ func TestOCIBaseEndpointOnly(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "Lodestone OCI Registry")
 	assert.Equal(t, "registry/2.0", w.Header().Get("Docker-Distribution-API-Version"))
+}
+
+type ociRouteTestStorage struct{}
+
+func (s *ociRouteTestStorage) Store(_ context.Context, _ string, _ io.Reader, _ string) error {
+	return nil
+}
+
+func (s *ociRouteTestStorage) Retrieve(_ context.Context, _ string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (s *ociRouteTestStorage) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+func (s *ociRouteTestStorage) Exists(_ context.Context, _ string) (bool, error) {
+	return true, nil
+}
+
+func (s *ociRouteTestStorage) GetSize(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
+func (s *ociRouteTestStorage) List(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
+func setupOCIOwnershipRouteTest(t *testing.T) (*registry.Service, *types.User, *types.User) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{}))
+
+	registryService := registry.NewService(&common.Database{DB: db}, &ociRouteTestStorage{})
+
+	owner := &types.User{Username: "owner", Email: "owner@example.com", Password: "pw", IsActive: true}
+	outsider := &types.User{Username: "outsider", Email: "outsider@example.com", Password: "pw", IsActive: true}
+	require.NoError(t, db.Create(owner).Error)
+	require.NoError(t, db.Create(outsider).Error)
+	require.NoError(t, registryService.Ownership.EstablishInitialOwnership(context.Background(), "oci", "repo", owner.ID))
+
+	return registryService, owner, outsider
+}
+
+func TestOCIManifestPutForbiddenForNonOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	registryService, _, outsider := setupOCIOwnershipRouteTest(t)
+
+	router := gin.New()
+	router.PUT("/v2/:name/manifests/:reference", func(c *gin.Context) {
+		c.Set("user", outsider)
+		handleOCIManifestPut(registryService)(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/latest", strings.NewReader(`{}`))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "insufficient permissions")
+}
+
+func TestOCIBlobUploadStartForbiddenForNonOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	registryService, _, outsider := setupOCIOwnershipRouteTest(t)
+
+	router := gin.New()
+	router.POST("/v2/:name/blobs/uploads/", func(c *gin.Context) {
+		c.Set("user", outsider)
+		handleOCIBlobUploadStart(registryService)(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "insufficient permissions")
+}
+
+func TestOCIBlobDeleteForbiddenForNonOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	registryService, _, outsider := setupOCIOwnershipRouteTest(t)
+
+	router := gin.New()
+	router.DELETE("/v2/:name/blobs/:digest", func(c *gin.Context) {
+		c.Set("user", outsider)
+		handleOCIBlobDelete(registryService)(c)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/v2/repo/blobs/sha256:abc", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "insufficient permissions")
+}
+
+func setupOCITokenAuthService(t *testing.T, permissions []string) (*auth.Service, string, *types.User) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.User{}, &types.APIKey{}))
+
+	authService := auth.NewService(&common.Database{DB: db}, nil, &config.AuthConfig{
+		JWTSecret:     "oci-token-test-secret",
+		JWTExpiration: time.Hour,
+		BCryptCost:    4,
+	})
+
+	user, err := authService.Register(context.Background(), &types.RegisterRequest{
+		Username: "oci-user",
+		Email:    "oci@example.com",
+		Password: "test-password",
+	})
+	require.NoError(t, err)
+
+	_, apiKey, err := authService.CreateAPIKey(context.Background(), user.ID, "oci-test-key", permissions)
+	require.NoError(t, err)
+
+	return authService, apiKey, user
+}
+
+func TestDockerTokenIssuesScopedJWTInsteadOfAPIKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	authService, apiKey, user := setupOCITokenAuthService(t, []string{"read", "write"})
+
+	router := gin.New()
+	router.GET("/v2/token", handleDockerToken(authService))
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/token?service=registry&scope=repository:repo:pull", nil)
+	req.SetBasicAuth("ignored", apiKey)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), apiKey)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	issuedToken, ok := response["token"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, issuedToken)
+
+	tokenUser, claims, err := authService.ValidateOCIToken(context.Background(), issuedToken)
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, tokenUser.ID)
+	assert.Equal(t, "registry", claims.Service)
+	assert.Equal(t, []string{"repository:repo:pull"}, claims.Scope)
+}
+
+func TestDockerTokenDeniesScopeWhenAPIKeyLacksPermission(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	authService, apiKey, _ := setupOCITokenAuthService(t, []string{"read"})
+
+	router := gin.New()
+	router.GET("/v2/token", handleDockerToken(authService))
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/token?service=registry&scope=repository:repo:push", nil)
+	req.SetBasicAuth("ignored", apiKey)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "insufficient permissions")
 }

@@ -22,6 +22,7 @@ ENV_DIR="$DEPLOY_DIR/environments"
 ENVIRONMENT=""
 ACTION=""
 SERVICES=""
+COMPOSE_CLI=""
 
 # Function to print colored output
 print_info() {
@@ -63,7 +64,7 @@ Actions:
 
 Environments:
     local       Local development (no external dependencies)
-    dev         Development with MinIO S3 simulation
+    dev         Development with LocalStack (S3) and Azurite (Azure) simulation
     prod        Production with Nginx and SSL support
 
 Services (optional, default: all):
@@ -71,11 +72,12 @@ Services (optional, default: all):
     redis       Redis cache
     api-gateway Lodestone API server
     nginx       Nginx reverse proxy (prod only)
-    minio       MinIO S3 simulation (dev only)
+    localstack  LocalStack S3 simulation (dev only)
+    azurite     Azurite Azure Blob simulation (dev only)
 
 Examples:
     $0 up local                    # Start local development
-    $0 up dev                      # Start development with MinIO
+    $0 up dev                      # Start development with cloud storage simulators
     $0 up prod                     # Start production deployment
     $0 up local --migrate          # Start with automatic migrations
     $0 migrate-up dev              # Run pending migrations only
@@ -95,6 +97,19 @@ Environment Setup:
 EOF
 }
 
+get_compose_cli() {
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return
+    fi
+    if command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return
+    fi
+    print_error "Docker Compose is not installed"
+    exit 1
+}
+
 # Function to check if environment file exists
 check_env_file() {
     local env_file="$PROJECT_ROOT/.env"
@@ -111,7 +126,7 @@ check_env_file() {
 # Function to get docker-compose command based on environment
 get_compose_cmd() {
     local env="$1"
-    local base_cmd="docker-compose -p lodestone -f $COMPOSE_DIR/docker-compose.yml"
+    local base_cmd="$COMPOSE_CLI --env-file $PROJECT_ROOT/.env -p lodestone -f $COMPOSE_DIR/docker-compose.yml"
     
     case "$env" in
         "local")
@@ -223,7 +238,8 @@ execute_compose() {
                 echo "  • PostgreSQL: localhost:5432 (user: lodestone)"
                 echo "  • Redis: localhost:6379"
                 if [ "$env" = "dev" ]; then
-                    echo "  • MinIO Console: http://localhost:9001 (minioadmin/minioadmin)"
+                    echo "  • LocalStack S3 Endpoint: http://localhost:4566"
+                    echo "  • Azurite Blob Endpoint: http://localhost:10000"
                 fi
             fi
             ;;
@@ -358,4 +374,5 @@ if [ "$ACTION" = "help" ] || [ "$ACTION" = "-h" ] || [ "$ACTION" = "--help" ]; t
 fi
 
 # Execute the command
+COMPOSE_CLI=$(get_compose_cli)
 execute_compose "$ENVIRONMENT" "$ACTION" $SERVICES

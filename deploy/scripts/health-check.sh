@@ -18,6 +18,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Default values
 ENVIRONMENT="auto"
 VERBOSE=false
+COMPOSE_CLI=""
 
 # Function to print colored output
 print_info() {
@@ -36,26 +37,40 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+get_compose_cli() {
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return
+    fi
+    if command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return
+    fi
+    print_error "Docker Compose is not installed"
+    exit 1
+}
+
 # Function to detect current environment
 detect_environment() {
     cd "$PROJECT_ROOT"
+    local base_cmd="$COMPOSE_CLI --env-file $PROJECT_ROOT/.env -p lodestone -f deploy/compose/docker-compose.yml"
     
     # Check which compose files are being used
-    if docker-compose -p lodestone -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.prod.yml ps >/dev/null 2>&1; then
-        if docker-compose -p lodestone -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.prod.yml ps | grep -q "nginx"; then
+    if $base_cmd -f deploy/compose/docker-compose.prod.yml ps >/dev/null 2>&1; then
+        if $base_cmd -f deploy/compose/docker-compose.prod.yml ps | grep -q "nginx"; then
             echo "prod"
             return
         fi
     fi
     
-    if docker-compose -p lodestone -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.dev.yml ps >/dev/null 2>&1; then
-        if docker-compose -p lodestone -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.dev.yml ps | grep -q "minio"; then
+    if $base_cmd -f deploy/compose/docker-compose.dev.yml ps >/dev/null 2>&1; then
+        if $base_cmd -f deploy/compose/docker-compose.dev.yml ps | grep -Eq "localstack|azurite"; then
             echo "dev"
             return
         fi
     fi
     
-    if docker-compose -p lodestone -f deploy/compose/docker-compose.yml ps >/dev/null 2>&1; then
+    if $base_cmd ps >/dev/null 2>&1; then
         echo "local"
         return
     fi
@@ -214,7 +229,7 @@ check_containers() {
     
     cd "$PROJECT_ROOT"
     
-    local compose_cmd="docker-compose -p lodestone -f deploy/compose/docker-compose.yml"
+    local compose_cmd="$COMPOSE_CLI --env-file $PROJECT_ROOT/.env -p lodestone -f deploy/compose/docker-compose.yml"
     case "$env" in
         "dev")
             compose_cmd="$compose_cmd -f deploy/compose/docker-compose.dev.yml"
@@ -342,7 +357,8 @@ run_health_check() {
         if [ "$env" = "prod" ]; then
             echo "  • Nginx Proxy: http://localhost:80"
         elif [ "$env" = "dev" ]; then
-            echo "  • MinIO Console: http://localhost:9001"
+            echo "  • LocalStack S3 Endpoint: http://localhost:4566"
+            echo "  • Azurite Blob Endpoint: http://localhost:10000"
         fi
         
         echo ""
@@ -395,6 +411,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Auto-detect environment if not specified
+COMPOSE_CLI=$(get_compose_cli)
 if [ "$ENVIRONMENT" = "auto" ]; then
     ENVIRONMENT=$(detect_environment)
     if [ "$ENVIRONMENT" = "none" ]; then

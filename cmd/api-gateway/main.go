@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -72,6 +73,8 @@ func main() {
 
 		c.Next()
 	})
+	router.Use(middleware.MetricsMiddleware())
+	router.Use(middleware.TracingMiddleware("lodestone-api-gateway"))
 
 	// Health check endpoint - support both GET and HEAD for Docker health checks
 	healthHandler := func(c *gin.Context) {
@@ -82,6 +85,7 @@ func main() {
 	}
 	router.GET("/health", healthHandler)
 	router.HEAD("/health", healthHandler)
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Swagger documentation endpoint
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -107,10 +111,12 @@ func main() {
 	routes.OPARoutes(packageRoutes, registryService, authService)
 
 	// OCI/Docker registry routes - add both specific routes for Swagger and catch-all for compatibility
-	routes.OCIRoutes(api, registryService, authService)
+	routes.OCIRoutes(packageRoutes, registryService, authService)
 
 	// OCI/Docker registry routes need to be at root level for Docker CLI compatibility
-	routes.OCIRootRoutes(router, registryService, authService)
+	ociRootRoutes := router.Group("")
+	ociRootRoutes.Use(middleware.RegistryValidationMiddleware(registrySettingsService))
+	routes.OCIRootRoutes(ociRootRoutes, registryService, authService)
 
 	// Start server
 	serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

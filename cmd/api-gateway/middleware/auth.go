@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -25,6 +27,33 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				token := strings.TrimPrefix(authHeader, "Bearer ")
 				ctx := context.WithValue(c.Request.Context(), "token", token)
+
+				// OCI scoped token validation path (for /v2 endpoints)
+				if strings.HasPrefix(c.Request.URL.Path, "/v2/") {
+					ociUser, ociClaims, ociErr := authService.ValidateOCIToken(ctx, token)
+					if ociErr == nil {
+						repo, action, enforceScope := getOCIRequiredScope(c.Request.Method, c.Request.URL.Path)
+						if enforceScope {
+							if err := authService.AuthorizeOCITokenScope(ociClaims, repo, action); err != nil {
+								log.Warn().Err(err).Str("path", c.Request.URL.Path).Msg("OCI token scope authorization failed")
+								setOCIAuthChallenge(c, fmt.Sprintf("repository:%s:%s", repo, action))
+								c.JSON(http.StatusUnauthorized, gin.H{"error": "insufficient scope"})
+								c.Abort()
+								return
+							}
+						}
+						c.Set("user", ociUser)
+						c.Next()
+						return
+					}
+					if !errors.Is(ociErr, auth.ErrNotOCIToken) {
+						log.Warn().Err(ociErr).Str("path", c.Request.URL.Path).Msg("OCI token validation failed")
+						setOCIAuthChallenge(c, "")
+						c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+						c.Abort()
+						return
+					}
+				}
 
 				// First try to validate as JWT token
 				user, err := authService.ValidateToken(ctx, token)
@@ -50,7 +79,7 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 
 				// For OCI/Docker endpoints, return proper WWW-Authenticate header
 				if strings.HasPrefix(c.Request.URL.Path, "/v2/") {
-					c.Header("WWW-Authenticate", `Bearer realm="http://localhost:8080/v2/auth",service="registry",scope="repository:*:*"`)
+					setOCIAuthChallenge(c, "")
 				}
 
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -113,11 +142,76 @@ func authMiddlewareWithInterface(authService AuthServiceInterface) gin.HandlerFu
 
 		// For OCI/Docker endpoints, return proper WWW-Authenticate header
 		if strings.HasPrefix(c.Request.URL.Path, "/v2/") {
-			c.Header("WWW-Authenticate", `Bearer realm="http://localhost:8080/v2/auth",service="registry",scope="repository:*:*"`)
+			setOCIAuthChallenge(c, "")
 		}
 
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		c.Abort()
+	}
+}
+
+func setOCIAuthChallenge(c *gin.Context, scope string) {
+	service := c.Request.Host
+	if service == "" {
+		service = "registry"
+	}
+
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+
+	challenge := fmt.Sprintf(`Bearer realm="%s://%s/v2/token",service="%s"`, scheme, service, service)
+	if scope != "" {
+		challenge = fmt.Sprintf(`%s,scope="%s"`, challenge, scope)
+	}
+	c.Header("WWW-Authenticate", challenge)
+}
+
+func getOCIRequiredScope(method, path string) (string, string, bool) {
+	repository := extractOCIRepository(path)
+	if repository == "" {
+		return "", "", false
+	}
+
+	switch {
+	case strings.HasSuffix(path, "/tags/list"):
+		return repository, "pull", true
+	case strings.Contains(path, "/manifests/"):
+		if method == http.MethodGet || method == http.MethodHead {
+			return repository, "pull", true
+		}
+		return repository, "push", true
+	case strings.Contains(path, "/blobs/uploads/"):
+		return repository, "push", true
+	case strings.Contains(path, "/blobs/"):
+		if method == http.MethodGet || method == http.MethodHead {
+			return repository, "pull", true
+		}
+		return repository, "push", true
+	default:
+		return "", "", false
+	}
+}
+
+func extractOCIRepository(path string) string {
+	trimmed := strings.TrimPrefix(path, "/v2/")
+	trimmed = strings.TrimPrefix(trimmed, "/")
+	if trimmed == "" {
+		return ""
+	}
+
+	switch {
+	case strings.HasSuffix(trimmed, "/tags/list"):
+		return strings.TrimSuffix(trimmed, "/tags/list")
+	case strings.Contains(trimmed, "/manifests/"):
+		return strings.SplitN(trimmed, "/manifests/", 2)[0]
+	case strings.Contains(trimmed, "/blobs/uploads/"):
+		return strings.SplitN(trimmed, "/blobs/uploads/", 2)[0]
+	case strings.Contains(trimmed, "/blobs/"):
+		return strings.SplitN(trimmed, "/blobs/", 2)[0]
+	default:
+		return ""
 	}
 }
 

@@ -551,3 +551,65 @@ func TestRevokeAPIKey_WrongUser(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "API key not found")
 }
+
+func TestGenerateAndValidateOCIToken(t *testing.T) {
+	service, _ := setupTestService(t)
+	ctx := context.Background()
+
+	user, err := service.Register(ctx, &types.RegisterRequest{
+		Username: "oci-user",
+		Email:    "oci-user@example.com",
+		Password: "testpassword123",
+	})
+	require.NoError(t, err)
+
+	token, _, err := service.GenerateOCIToken(user.ID, "registry", []string{"repository:repo:pull"}, time.Hour)
+	require.NoError(t, err)
+
+	validatedUser, claims, err := service.ValidateOCIToken(ctx, token)
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, validatedUser.ID)
+	assert.Equal(t, "oci-registry", claims.TokenType)
+	assert.Equal(t, "registry", claims.Service)
+	assert.Equal(t, []string{"repository:repo:pull"}, claims.Scope)
+}
+
+func TestValidateOCIToken_RejectsRegularJWT(t *testing.T) {
+	service, _ := setupTestService(t)
+	ctx := context.Background()
+
+	user, err := service.Register(ctx, &types.RegisterRequest{
+		Username: "jwt-user",
+		Email:    "jwt-user@example.com",
+		Password: "testpassword123",
+	})
+	require.NoError(t, err)
+
+	token, err := utils.GenerateJWT(user.ID, service.config.JWTSecret, time.Hour)
+	require.NoError(t, err)
+
+	validatedUser, claims, err := service.ValidateOCIToken(ctx, token)
+	assert.ErrorIs(t, err, ErrNotOCIToken)
+	assert.Nil(t, validatedUser)
+	assert.Nil(t, claims)
+}
+
+func TestAuthorizeOCITokenScope(t *testing.T) {
+	service, _ := setupTestService(t)
+
+	claims := &OCITokenClaims{
+		TokenType: "oci-registry",
+		UserID:    uuid.NewString(),
+		Service:   "registry",
+		Access: []OCIAccessEntry{
+			{
+				Type:    "repository",
+				Name:    "team/app",
+				Actions: []string{"pull"},
+			},
+		},
+	}
+
+	require.NoError(t, service.AuthorizeOCITokenScope(claims, "team/app", "pull"))
+	require.Error(t, service.AuthorizeOCITokenScope(claims, "team/app", "push"))
+}

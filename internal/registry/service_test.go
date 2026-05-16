@@ -96,8 +96,18 @@ func setupTestDB(t *testing.T) *common.Database {
 	require.NoError(t, err)
 
 	// Auto migrate tables
-	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{})
+	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{})
 	require.NoError(t, err)
+
+	enabledRegistries := []string{"nuget", "npm", "maven", "go", "helm", "oci", "opa", "cargo", "rubygems", "test"}
+	for _, registryName := range enabledRegistries {
+		setting := &types.RegistrySetting{
+			RegistryName: registryName,
+			Enabled:      true,
+			Description:  registryName + " registry for tests",
+		}
+		require.NoError(t, db.Create(setting).Error)
+	}
 
 	return &common.Database{DB: db}
 }

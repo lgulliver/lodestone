@@ -2,9 +2,12 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/internal/common"
 	"github.com/lgulliver/lodestone/pkg/auth"
@@ -20,6 +23,23 @@ type Service struct {
 	db     *common.Database
 	cache  *common.Cache
 	config *config.AuthConfig
+}
+
+var ErrNotOCIToken = errors.New("not an OCI scoped token")
+
+type OCIAccessEntry struct {
+	Type    string   `json:"type"`
+	Name    string   `json:"name"`
+	Actions []string `json:"actions"`
+}
+
+type OCITokenClaims struct {
+	TokenType string           `json:"token_type"`
+	UserID    string           `json:"user_id"`
+	Service   string           `json:"service"`
+	Scope     []string         `json:"scope,omitempty"`
+	Access    []OCIAccessEntry `json:"access,omitempty"`
+	jwt.RegisteredClaims
 }
 
 // NewService creates a new authentication service
@@ -160,6 +180,152 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*types
 
 	user.Password = "" // Remove password from response
 	return &user, nil
+}
+
+func (s *Service) GenerateOCIToken(userID uuid.UUID, service string, scopes []string, expiration time.Duration) (string, time.Time, error) {
+	now := time.Now().UTC()
+	expiresAt := now.Add(expiration)
+	service = strings.TrimSpace(service)
+	if service == "" {
+		service = "registry"
+	}
+
+	access := make([]OCIAccessEntry, 0, len(scopes))
+	for _, rawScope := range scopes {
+		entry, ok := parseOCIScope(rawScope)
+		if !ok {
+			continue
+		}
+		access = append(access, entry)
+	}
+
+	claims := OCITokenClaims{
+		TokenType: "oci-registry",
+		UserID:    userID.String(),
+		Service:   service,
+		Scope:     scopes,
+		Access:    access,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID.String(),
+			Audience:  jwt.ClaimStrings{service},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			Issuer:    "lodestone-oci",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedToken, err := token.SignedString([]byte(s.config.JWTSecret))
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to sign OCI token: %w", err)
+	}
+
+	return signedToken, expiresAt, nil
+}
+
+func (s *Service) ValidateOCIToken(ctx context.Context, tokenString string) (*types.User, *OCITokenClaims, error) {
+	claims := &OCITokenClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(s.config.JWTSecret), nil
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid OCI token: %w", err)
+	}
+	if !token.Valid {
+		return nil, nil, fmt.Errorf("invalid OCI token")
+	}
+	if claims.TokenType != "oci-registry" || claims.Service == "" {
+		return nil, nil, ErrNotOCIToken
+	}
+
+	user, err := s.ValidateToken(ctx, tokenString)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return user, claims, nil
+}
+
+func (s *Service) AuthorizeOCITokenScope(claims *OCITokenClaims, repository, action string) error {
+	if claims == nil {
+		return fmt.Errorf("missing OCI token claims")
+	}
+	if repository == "" || action == "" {
+		return nil
+	}
+
+	accessEntries := claims.Access
+	if len(accessEntries) == 0 {
+		for _, rawScope := range claims.Scope {
+			entry, ok := parseOCIScope(rawScope)
+			if !ok {
+				continue
+			}
+			accessEntries = append(accessEntries, entry)
+		}
+	}
+
+	for _, entry := range accessEntries {
+		if entry.Type != "repository" {
+			continue
+		}
+		if entry.Name != "*" && entry.Name != repository {
+			continue
+		}
+		for _, allowed := range entry.Actions {
+			if allowed == "*" || strings.EqualFold(allowed, action) {
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("insufficient OCI token scope for %s:%s", repository, action)
+}
+
+func parseOCIScope(scope string) (OCIAccessEntry, bool) {
+	parts := strings.Split(scope, ":")
+	if len(parts) != 3 {
+		return OCIAccessEntry{}, false
+	}
+	scopeType := strings.TrimSpace(parts[0])
+	name := strings.TrimSpace(parts[1])
+	rawActions := strings.TrimSpace(parts[2])
+	if scopeType == "" || name == "" || rawActions == "" {
+		return OCIAccessEntry{}, false
+	}
+
+	actions := strings.Split(rawActions, ",")
+	cleaned := make([]string, 0, len(actions))
+	for _, action := range actions {
+		action = strings.TrimSpace(action)
+		if action == "" {
+			continue
+		}
+		if !stringSliceContains(cleaned, action) {
+			cleaned = append(cleaned, action)
+		}
+	}
+	if len(cleaned) == 0 {
+		return OCIAccessEntry{}, false
+	}
+
+	return OCIAccessEntry{
+		Type:    scopeType,
+		Name:    name,
+		Actions: cleaned,
+	}, true
+}
+
+func stringSliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 // CreateAPIKey creates a new API key for a user

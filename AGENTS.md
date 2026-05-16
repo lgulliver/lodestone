@@ -37,3 +37,6 @@ Use frontier models only when needed for:
 2. repeated failed attempts on the same problem
 3. high-risk security design/review
 
+## Engineering Quality Rules
+- Minimum Go coverage on the configured coverage scope is **80%**.
+- `make test` must pass with the coverage gate (`coverage-check`).

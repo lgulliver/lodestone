@@ -136,7 +136,7 @@ func setupSimpleTestEnvironment(t *testing.T, testDir string) (*registry.Service
 	sqlDB.SetMaxIdleConns(1)
 
 	// Use GORM AutoMigrate instead of raw SQL
-	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{})
+	err = db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{})
 	if err != nil {
 		t.Fatal("Failed to migrate database:", err)
 	}
@@ -152,6 +152,15 @@ func setupSimpleTestEnvironment(t *testing.T, testDir string) (*registry.Service
 	}
 	if err := db.Create(testUser).Error; err != nil {
 		t.Fatal("Failed to create test user:", err)
+	}
+
+	registrySetting := &types.RegistrySetting{
+		RegistryName: "npm",
+		Enabled:      true,
+		Description:  "npm registry for e2e tests",
+	}
+	if err := db.Create(registrySetting).Error; err != nil {
+		t.Fatal("Failed to create registry setting:", err)
 	}
 
 	// Setup storage

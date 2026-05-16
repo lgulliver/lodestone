@@ -16,23 +16,35 @@ services:
     ports:
       - "6379:6379"  # Expose for development access
 
-  # MinIO (S3-compatible storage for development)
-  minio:
-    image: minio/minio:latest
+  # LocalStack (S3-compatible storage simulation for development)
+  localstack:
+    image: localstack/localstack:latest
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      SERVICES: s3
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
     volumes:
-      - minio_data:/data
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    command: server /data --console-address ":9001"
+      - "4566:4566"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 30s
       timeout: 20s
       retries: 3
+    networks:
+      - lodestone-network
+
+  # Azurite (Azure Blob simulation for development)
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000
+    volumes:
+      - azurite_data:/data
+    ports:
+      - "10000:10000"
     networks:
       - lodestone-network
 
@@ -48,10 +60,21 @@ services:
       # Storage config (using local for dev)
       STORAGE_TYPE: local
       STORAGE_LOCAL_PATH: /app/artifacts
+      STORAGE_S3_BUCKET: lodestone-artifacts
+      STORAGE_S3_REGION: us-east-1
+      STORAGE_S3_ACCESS_KEY: test
+      STORAGE_S3_SECRET_KEY: test
+      STORAGE_S3_ENDPOINT: http://localstack:4566
+      STORAGE_S3_FORCE_PATH_STYLE: "true"
+      STORAGE_AZURE_CONTAINER: lodestone-artifacts
+      STORAGE_AZURE_CONNECTION_STRING: UseDevelopmentStorage=true
+      STORAGE_AZURE_ENDPOINT: http://azurite:10000/devstoreaccount1
       
       # Development features
       RATE_LIMIT_RPS: 1000  # Higher limit for dev
 
 volumes:
-  minio_data:
+  localstack_data:
+    driver: local
+  azurite_data:
     driver: local

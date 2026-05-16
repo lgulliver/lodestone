@@ -52,10 +52,20 @@ STORAGE_TYPE=local
 
 # Or S3-compatible storage
 STORAGE_TYPE=s3
-S3_BUCKET=your-bucket-name
-S3_REGION=us-east-1
-S3_ACCESS_KEY=your-access-key
-S3_SECRET_KEY=your-secret-key
+STORAGE_S3_BUCKET=your-bucket-name
+STORAGE_S3_REGION=us-east-1
+STORAGE_S3_ACCESS_KEY=your-access-key
+STORAGE_S3_SECRET_KEY=your-secret-key
+STORAGE_S3_ENDPOINT=https://s3.amazonaws.com
+STORAGE_S3_FORCE_PATH_STYLE=false
+
+# Or Azure Blob storage
+STORAGE_TYPE=azure
+STORAGE_AZURE_ACCOUNT_NAME=your-account-name
+STORAGE_AZURE_ACCOUNT_KEY=your-account-key
+STORAGE_AZURE_CONTAINER=lodestone-artifacts
+STORAGE_AZURE_ENDPOINT=https://your-account-name.blob.core.windows.net/
+STORAGE_AZURE_CONNECTION_STRING=
 ```
 
 ## Deployment Options
@@ -68,10 +78,11 @@ For local development with hot reloading and debug features:
 make docker-dev
 ```
 
-This uses `deployments/docker-compose.dev.yml` with:
+This uses `deploy/compose/docker-compose.dev.yml` with:
 - Debug logging enabled
 - Development-friendly settings
-- MinIO for S3-compatible local storage
+- LocalStack for S3-compatible local storage simulation
+- Azurite for Azure Blob local storage simulation
 - Exposed database ports for inspection
 
 ### Production Environment
@@ -230,7 +241,12 @@ Log levels: `debug`, `info`, `warn`, `error`
 
 ### Metrics
 
-Future: Prometheus metrics endpoint at `/metrics`
+Prometheus metrics are exposed at `/metrics`.
+
+### Tracing
+
+HTTP request tracing is enabled via OpenTelemetry Gin middleware in the API gateway.
+To export traces, configure your OpenTelemetry SDK/exporter environment for the deployment target.
 
 ## Backup and Recovery
 

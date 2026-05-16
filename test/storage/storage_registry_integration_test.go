@@ -81,7 +81,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run auto migrations
-	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{})
+	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{})
 	require.NoError(t, err)
 
 	commonDB := &common.Database{DB: db}
@@ -104,6 +104,14 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		IsAdmin:  false,
 	}
 	err = db.Create(user).Error
+	require.NoError(t, err)
+
+	registrySetting := &types.RegistrySetting{
+		RegistryName: "npm",
+		Enabled:      true,
+		Description:  "npm registry for storage integration tests",
+	}
+	err = db.Create(registrySetting).Error
 	require.NoError(t, err)
 
 	// Test data
@@ -266,7 +274,7 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run auto migrations
-	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{})
+	err = db.AutoMigrate(&types.User{}, &types.APIKey{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{})
 	require.NoError(t, err)
 
 	commonDB := &common.Database{DB: db}
@@ -300,6 +308,14 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 		IsAdmin:  false,
 	}
 	err = db.Create(user).Error
+	require.NoError(t, err)
+
+	registrySetting := &types.RegistrySetting{
+		RegistryName: "npm",
+		Enabled:      true,
+		Description:  "npm registry for storage integration tests",
+	}
+	err = db.Create(registrySetting).Error
 	require.NoError(t, err)
 
 	// Test basic operation

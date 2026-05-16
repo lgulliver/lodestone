@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/lgulliver/lodestone/pkg/config"
+	"github.com/redis/go-redis/v9"
 )
 
 // Cache wraps Redis client for caching operations
@@ -26,7 +26,7 @@ func NewCache(cfg *config.RedisConfig) (*Cache, error) {
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
 	}
@@ -40,7 +40,7 @@ func (c *Cache) Set(ctx context.Context, key string, value interface{}, expirati
 	if err != nil {
 		return fmt.Errorf("failed to marshal value: %w", err)
 	}
-	
+
 	return c.client.Set(ctx, key, data, expiration).Err()
 }
 
@@ -53,7 +53,7 @@ func (c *Cache) Get(ctx context.Context, key string, dest interface{}) error {
 		}
 		return fmt.Errorf("failed to get value: %w", err)
 	}
-	
+
 	return json.Unmarshal([]byte(data), dest)
 }
 

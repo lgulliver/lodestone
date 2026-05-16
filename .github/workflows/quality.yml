@@ -1,0 +1,48 @@
+name: Quality Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify formatting
+        run: make fmt-check
+
+      - name: Run go vet
+        run: make vet
+
+      - name: Run strict linting
+        run: make lint-strict
+
+      - name: Run static analysis
+        run: make static-analysis
+
+      - name: Run tests with coverage gate
+        run: make test
+
+      - name: Upload coverage report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+          if-no-files-found: ignore

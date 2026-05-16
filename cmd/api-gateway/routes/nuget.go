@@ -20,6 +20,7 @@ import (
 	"github.com/lgulliver/lodestone/internal/registry/registries/nuget"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 )
 
 // extractNuGetPackageInfo extracts package name and version from .nupkg file contents
@@ -708,6 +709,30 @@ func handleNuGetSymbolUpload(registryService *registry.Service) gin.HandlerFunc 
 
 		if !strings.HasSuffix(strings.ToLower(filename), ".snupkg") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "symbol package must have .snupkg extension"})
+			return
+		}
+
+		// Enforce that symbol uploads are tied to an existing base package version.
+		// This prevents symbol-only package squatting and ensures ownership checks
+		// are evaluated against the real package identity.
+		var baseArtifact types.Artifact
+		if err := registryService.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
+			packageName, version, "nuget").First(&baseArtifact).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "base package version must exist before uploading symbols"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate base package for symbol upload"})
+			return
+		}
+
+		canPublish, err := registryService.Ownership.CanUserPublish(c.Request.Context(), "nuget", baseArtifact.Name, user.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate ownership for symbol upload"})
+			return
+		}
+		if !canPublish {
+			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions to upload symbols for this package"})
 			return
 		}
 

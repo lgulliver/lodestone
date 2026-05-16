@@ -35,7 +35,7 @@ This directory contains all deployment configurations and scripts for the Lodest
 deploy/
 ├── compose/                    # Docker Compose configurations
 │   ├── docker-compose.yml     # Base configuration (all services)
-│   ├── docker-compose.dev.yml # Development overrides (+ MinIO)
+│   ├── docker-compose.dev.yml # Development overrides (+ LocalStack, Azurite)
 │   └── docker-compose.prod.yml# Production overrides (+ Nginx, SSL)
 ├── configs/                    # Service configurations
 │   ├── docker/                # Dockerfiles
@@ -60,7 +60,7 @@ Manages all deployment operations:
 ```bash
 # Start environments
 ./deploy/scripts/deploy.sh up local     # Local development
-./deploy/scripts/deploy.sh up dev       # Development with MinIO
+./deploy/scripts/deploy.sh up dev       # Development with LocalStack + Azurite
 ./deploy/scripts/deploy.sh up prod      # Production with Nginx
 
 # Stop environments
@@ -122,10 +122,10 @@ Comprehensive health monitoring:
 
 ### Development (`dev`)
 
-- **Purpose**: Full-featured development with S3 simulation
-- **Services**: PostgreSQL, Redis, API Gateway, MinIO
-- **Ports**: 5432, 6379, 8080, 9000/9001 (MinIO)
-- **Storage**: Local + MinIO S3 simulation
+- **Purpose**: Full-featured development with cloud storage simulation
+- **Services**: PostgreSQL, Redis, API Gateway, LocalStack, Azurite
+- **Ports**: 5432, 6379, 8080, 4566 (LocalStack), 10000 (Azurite)
+- **Storage**: Local + simulated S3/Azure Blob endpoints
 - **Features**: Debug logging, exposed database ports
 
 ### Production (`prod`)
@@ -143,7 +143,7 @@ Comprehensive health monitoring:
 Each environment has a corresponding `.env` template in `deploy/environments/`:
 
 - **`.env.local`**: Ready-to-use local development settings
-- **`.env.dev`**: Development settings with MinIO
+- **`.env.dev`**: Development settings with LocalStack/Azurite compatibility
 - **`.env.prod.template`**: Production template requiring customization
 
 ### Customizing Production

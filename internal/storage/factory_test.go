@@ -64,21 +64,47 @@ func TestStorageFactory_UnsupportedType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported storage type")
 }
 
-func TestStorageFactory_CloudStorageNotImplemented(t *testing.T) {
-	cloudTypes := []string{"s3", "gcs", "azure"}
+func TestStorageFactory_CloudStorageConfigurationValidation(t *testing.T) {
+	t.Run("gcs remains unimplemented", func(t *testing.T) {
+		storageConfig := &config.StorageConfig{Type: "gcs"}
 
-	for _, cloudType := range cloudTypes {
-		t.Run(cloudType, func(t *testing.T) {
-			storageConfig := &config.StorageConfig{
-				Type: cloudType,
-			}
+		factory := NewStorageFactory(storageConfig)
+		storage, err := factory.CreateStorage()
 
-			factory := NewStorageFactory(storageConfig)
-			storage, err := factory.CreateStorage()
+		assert.Error(t, err)
+		assert.Nil(t, storage)
+		assert.Contains(t, err.Error(), "not yet implemented")
+	})
 
-			assert.Error(t, err)
-			assert.Nil(t, storage)
-			assert.Contains(t, err.Error(), "not yet implemented")
-		})
-	}
+	t.Run("s3 requires minimal required config", func(t *testing.T) {
+		storageConfig := &config.StorageConfig{
+			Type: "s3",
+			S3: config.S3StorageConfig{
+				Region: "us-east-1",
+			},
+		}
+
+		factory := NewStorageFactory(storageConfig)
+		storage, err := factory.CreateStorage()
+
+		assert.Error(t, err)
+		assert.Nil(t, storage)
+		assert.Contains(t, err.Error(), "missing required s3 configuration")
+	})
+
+	t.Run("azure requires credentials and container", func(t *testing.T) {
+		storageConfig := &config.StorageConfig{
+			Type: "azure",
+			Azure: config.AzureStorageConfig{
+				Container: "lodestone-artifacts",
+			},
+		}
+
+		factory := NewStorageFactory(storageConfig)
+		storage, err := factory.CreateStorage()
+
+		assert.Error(t, err)
+		assert.Nil(t, storage)
+		assert.Contains(t, err.Error(), "missing required azure configuration")
+	})
 }

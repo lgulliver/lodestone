@@ -9,15 +9,15 @@ import (
 
 // SearchQuery represents a search request
 type SearchQuery struct {
-	Query     string   `json:"query"`                    // Search term
-	Registry  string   `json:"registry"`                 // Filter by registry type
-	Publisher string   `json:"publisher"`                // Filter by publisher username
-	Tags      []string `json:"tags"`                     // Filter by tags
-	IsPublic  *bool    `json:"is_public"`               // Filter by visibility
-	SortBy    string   `json:"sort_by"`                 // Sort field: name, created_at, downloads, updated_at
-	SortOrder string   `json:"sort_order"`              // Sort order: asc, desc
-	Page      int      `json:"page"`                    // Page number (1-based)
-	PerPage   int      `json:"per_page"`                // Items per page
+	Query     string   `json:"query"`      // Search term
+	Registry  string   `json:"registry"`   // Filter by registry type
+	Publisher string   `json:"publisher"`  // Filter by publisher username
+	Tags      []string `json:"tags"`       // Filter by tags
+	IsPublic  *bool    `json:"is_public"`  // Filter by visibility
+	SortBy    string   `json:"sort_by"`    // Sort field: name, created_at, downloads, updated_at
+	SortOrder string   `json:"sort_order"` // Sort order: asc, desc
+	Page      int      `json:"page"`       // Page number (1-based)
+	PerPage   int      `json:"per_page"`   // Items per page
 }
 
 // SearchResults represents search response
@@ -28,21 +28,21 @@ type SearchResults struct {
 
 // ArtifactMetadata represents detailed metadata for an artifact
 type ArtifactMetadata struct {
-	Artifact         types.Artifact        `json:"artifact"`
-	DownloadStats    DownloadStats         `json:"download_stats"`
-	Versions         []types.Artifact      `json:"versions"`
-	Dependencies     []Dependency          `json:"dependencies"`
-	SecurityInfo     *SecurityInfo         `json:"security_info,omitempty"`
-	QualityMetrics   *QualityMetrics       `json:"quality_metrics,omitempty"`
+	Artifact         types.Artifact         `json:"artifact"`
+	DownloadStats    DownloadStats          `json:"download_stats"`
+	Versions         []types.Artifact       `json:"versions"`
+	Dependencies     []Dependency           `json:"dependencies"`
+	SecurityInfo     *SecurityInfo          `json:"security_info,omitempty"`
+	QualityMetrics   *QualityMetrics        `json:"quality_metrics,omitempty"`
 	RegistrySpecific map[string]interface{} `json:"registry_specific,omitempty"`
 }
 
 // DownloadStats represents download statistics
 type DownloadStats struct {
-	Total          int64           `json:"total"`
-	Last30Days     int64           `json:"last_30_days"`
-	Last7Days      int64           `json:"last_7_days"`
-	Today          int64           `json:"today"`
+	Total          int64            `json:"total"`
+	Last30Days     int64            `json:"last_30_days"`
+	Last7Days      int64            `json:"last_7_days"`
+	Today          int64            `json:"today"`
 	RecentActivity []DailyDownloads `json:"recent_activity"`
 }
 
@@ -70,11 +70,11 @@ type SecurityInfo struct {
 
 // Vulnerability represents a security vulnerability
 type Vulnerability struct {
-	ID          string `json:"id,omitempty"`
-	Severity    string `json:"severity"`
-	Description string `json:"description"`
+	ID          string   `json:"id,omitempty"`
+	Severity    string   `json:"severity"`
+	Description string   `json:"description"`
 	CVSS        *float64 `json:"cvss,omitempty"`
-	FixedIn     string `json:"fixed_in,omitempty"`
+	FixedIn     string   `json:"fixed_in,omitempty"`
 }
 
 // QualityMetrics represents code quality metrics
@@ -108,15 +108,15 @@ func (ArtifactIndex) TableName() string {
 
 // DownloadEvent represents a download event for analytics
 type DownloadEvent struct {
-	ID         uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	ArtifactID uuid.UUID `json:"artifact_id" gorm:"type:uuid;index;not null"`
+	ID         uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ArtifactID uuid.UUID  `json:"artifact_id" gorm:"type:uuid;index;not null"`
 	UserID     *uuid.UUID `json:"user_id" gorm:"type:uuid;index"`
-	IPAddress  string    `json:"ip_address" gorm:"index"`
-	UserAgent  string    `json:"user_agent"`
-	Registry   string    `json:"registry" gorm:"index"`
-	Name       string    `json:"name" gorm:"index"`
-	Version    string    `json:"version" gorm:"index"`
-	Timestamp  time.Time `json:"timestamp" gorm:"index"`
+	IPAddress  string     `json:"ip_address" gorm:"index"`
+	UserAgent  string     `json:"user_agent"`
+	Registry   string     `json:"registry" gorm:"index"`
+	Name       string     `json:"name" gorm:"index"`
+	Version    string     `json:"version" gorm:"index"`
+	Timestamp  time.Time  `json:"timestamp" gorm:"index"`
 }
 
 // TableName sets the table name for DownloadEvent
@@ -168,7 +168,7 @@ type IndexRequest struct {
 // SearchSuggestion represents a search suggestion
 type SearchSuggestion struct {
 	Text      string  `json:"text"`
-	Type      string  `json:"type"`      // artifact, author, tag
+	Type      string  `json:"type"` // artifact, author, tag
 	Score     float64 `json:"score"`
 	Registry  string  `json:"registry"`
 	Highlight string  `json:"highlight"`
@@ -177,16 +177,16 @@ type SearchSuggestion struct {
 // TrendingQuery represents a request for trending artifacts
 type TrendingQuery struct {
 	Registry string     `json:"registry"`
-	Period   string     `json:"period"`    // day, week, month
+	Period   string     `json:"period"` // day, week, month
 	Since    *time.Time `json:"since"`
 	Limit    int        `json:"limit"`
 }
 
 // TrendingArtifact represents a trending artifact
 type TrendingArtifact struct {
-	Artifact      types.Artifact `json:"artifact"`
-	Downloads     int64          `json:"downloads"`
-	GrowthRate    float64        `json:"growth_rate"`
-	Rank          int            `json:"rank"`
-	PreviousRank  *int           `json:"previous_rank,omitempty"`
+	Artifact     types.Artifact `json:"artifact"`
+	Downloads    int64          `json:"downloads"`
+	GrowthRate   float64        `json:"growth_rate"`
+	Rank         int            `json:"rank"`
+	PreviousRank *int           `json:"previous_rank,omitempty"`
 }

@@ -73,6 +73,13 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 		Str("published_by", publishedBy.String()).
 		Msg("Starting artifact upload")
 
+	// Get registry handler
+	handler, exists := s.handlers[registryType]
+	if !exists {
+		log.Error().Str("registry_type", registryType).Msg("Unsupported registry type")
+		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
+	}
+
 	// Check if registry is enabled
 	enabled, err := s.Settings.IsRegistryEnabled(ctx, registryType)
 	if err != nil {
@@ -82,13 +89,6 @@ func (s *Service) Upload(ctx context.Context, registryType, name, version string
 	if !enabled {
 		log.Warn().Str("registry_type", registryType).Msg("Upload rejected - registry is disabled")
 		return nil, fmt.Errorf("registry %s is currently disabled", registryType)
-	}
-
-	// Get registry handler
-	handler, exists := s.handlers[registryType]
-	if !exists {
-		log.Error().Str("registry_type", registryType).Msg("Unsupported registry type")
-		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
 	}
 
 	// Read content into memory for processing
