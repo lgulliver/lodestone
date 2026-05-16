@@ -38,7 +38,7 @@ func handleGoVersionList(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "go")
 
 		filter := &types.ArtifactFilter{
 			Name:     module,
@@ -104,7 +104,7 @@ func handleGoVersionFile(registryService *registry.Service) gin.HandlerFunc {
 		version := strings.Join(parts[:len(parts)-1], ".") // Everything except the last part
 		fileType := parts[len(parts)-1]                    // The file extension
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "go")
 
 		switch fileType {
 		case "info":
@@ -165,7 +165,7 @@ func handleGoLatest(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "go")
 
 		filter := &types.ArtifactFilter{
 			Name:     module,
@@ -211,8 +211,8 @@ func handleGoModuleUpload(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "go")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		_, err := registryService.Upload(ctx, "go", module, version, c.Request.Body, user.ID)
 		if err != nil {
@@ -242,8 +242,8 @@ func handleGoModuleDelete(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "go")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "go")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		err := registryService.Delete(ctx, "go", module, version, user.ID)
 		if err != nil {

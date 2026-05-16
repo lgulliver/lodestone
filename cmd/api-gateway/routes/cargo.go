@@ -32,7 +32,7 @@ func handleCargoSearch(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := c.Query("q")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "cargo")
 
 		filter := &types.ArtifactFilter{
 			Registry: "cargo",
@@ -82,7 +82,7 @@ func handleCargoInfo(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "cargo")
 
 		filter := &types.ArtifactFilter{
 			Name:     crateName,
@@ -130,7 +130,7 @@ func handleCargoDownload(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "cargo")
 
 		artifact, content, err := registryService.Download(ctx, "cargo", crateName, version)
 		if err != nil {
@@ -170,8 +170,8 @@ func handleCargoPublish(registryService *registry.Service) gin.HandlerFunc {
 		}
 		defer file.Close()
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "cargo")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// Parse Cargo crate filename: cratename-version.crate
 		filename := header.Filename
@@ -223,8 +223,8 @@ func handleCargoYank(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "cargo")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "cargo")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// For now, yanking is equivalent to deletion
 		// In a real implementation, you'd mark the version as yanked instead

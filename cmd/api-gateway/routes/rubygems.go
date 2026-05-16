@@ -38,7 +38,7 @@ func handleGemsSearch(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := c.Query("query")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "rubygems")
 
 		filter := &types.ArtifactFilter{
 			Registry: "rubygems",
@@ -88,7 +88,7 @@ func handleGemInfo(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "rubygems")
 
 		filter := &types.ArtifactFilter{
 			Name:     gemName,
@@ -138,7 +138,7 @@ func handleGemVersions(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "rubygems")
 
 		filter := &types.ArtifactFilter{
 			Name:     gemName,
@@ -189,7 +189,7 @@ func handleGemDownload(registryService *registry.Service) gin.HandlerFunc {
 		version := parts[len(parts)-1]
 		gemName := strings.Join(parts[:len(parts)-1], "-")
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "rubygems")
 
 		artifact, content, err := registryService.Download(ctx, "rubygems", gemName, version)
 		if err != nil {
@@ -228,8 +228,8 @@ func handleGemPush(registryService *registry.Service) gin.HandlerFunc {
 		}
 		defer file.Close()
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "rubygems")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// Parse RubyGem filename: gemname-version.gem
 		filename := header.Filename
@@ -275,8 +275,8 @@ func handleGemYank(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "rubygems")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "rubygems")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		err := registryService.Delete(ctx, "rubygems", gemName, version, user.ID)
 		if err != nil {

@@ -37,7 +37,7 @@ func handleOPABundleDownload(registryService *registry.Service) gin.HandlerFunc 
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "opa")
 
 		// Get the latest version of the bundle
 		filter := &types.ArtifactFilter{
@@ -91,7 +91,7 @@ func handleOPABundleVersionDownload(registryService *registry.Service) gin.Handl
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "opa")
 
 		artifact, content, err := registryService.Download(ctx, "opa", bundleName, version)
 		if err != nil {
@@ -118,7 +118,7 @@ func handleOPABundleVersionDownload(registryService *registry.Service) gin.Handl
 
 func handleOPABundleList(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "opa")
 
 		filter := &types.ArtifactFilter{
 			Registry: "opa",
@@ -199,8 +199,8 @@ func handleOPABundleUpload(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "opa")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// Use current timestamp as version if not specified
 		versionHeader := c.Request.Header.Get("X-Bundle-Version")
@@ -239,8 +239,8 @@ func handleOPABundleVersionUpload(registryService *registry.Service) gin.Handler
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "opa")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		_, err := registryService.Upload(ctx, "opa", bundleName, version, c.Request.Body, user.ID)
 		if err != nil {
@@ -272,8 +272,8 @@ func handleOPABundleDelete(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "opa")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "opa")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		err := registryService.Delete(ctx, "opa", bundleName, version, user.ID)
 		if err != nil {

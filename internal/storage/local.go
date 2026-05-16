@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,10 +21,29 @@ type LocalStorage struct {
 	mutex    sync.RWMutex // For concurrent access safety
 }
 
+func resolveAndValidatePath(basePath, path string) (string, error) {
+	base := filepath.Clean(basePath)
+	target := filepath.Join(base, filepath.Clean(path))
+
+	if !strings.HasPrefix(target, base+string(os.PathSeparator)) && target != base {
+		return "", fmt.Errorf("invalid path: path escapes base directory")
+	}
+
+	return target, nil
+}
+
+func validateLocalPath(path string) error {
+	if !filepath.IsLocal(path) {
+		return fmt.Errorf("invalid path: path must be relative and must not escape base directory")
+	}
+
+	return nil
+}
+
 // NewLocalStorage creates a new local storage instance
 func NewLocalStorage(basePath string) (*LocalStorage, error) {
 	// Ensure the base directory exists
-	if err := os.MkdirAll(basePath, 0755); err != nil {
+	if err := os.MkdirAll(basePath, 0750); err != nil {
 		log.Error().Err(err).Str("path", basePath).Msg("failed to create storage directory")
 		return nil, fmt.Errorf("failed to create storage directory: %w", err)
 	}
@@ -38,6 +58,10 @@ func NewLocalStorage(basePath string) (*LocalStorage, error) {
 func (ls *LocalStorage) Store(ctx context.Context, path string, content io.Reader, contentType string) error {
 	startTime := time.Now()
 
+	if err := validateLocalPath(path); err != nil {
+		return err
+	}
+
 	// Check if context is cancelled before starting
 	select {
 	case <-ctx.Done():
@@ -48,28 +72,40 @@ func (ls *LocalStorage) Store(ctx context.Context, path string, content io.Reade
 	ls.mutex.Lock()
 	defer ls.mutex.Unlock()
 
-	fullPath := filepath.Join(ls.basePath, path)
+	fullPath, err := resolveAndValidatePath(ls.basePath, path)
+	if err != nil {
+		return err
+	}
 
 	// Ensure the directory exists
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		log.Error().Err(err).Str("path", path).Str("dir", dir).Msg("failed to create directory")
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	// Create temporary file for atomic write
 	tempPath := fullPath + ".tmp." + fmt.Sprintf("%d", time.Now().UnixNano())
-	tempFile, err := os.Create(tempPath)
+	tempFile, err := os.Create(tempPath) // #nosec G304 -- tempPath is constrained under validated basePath.
 	if err != nil {
 		log.Error().Err(err).Str("path", path).Str("temp_path", tempPath).Msg("failed to create temporary file")
 		return fmt.Errorf("failed to create temporary file: %w", err)
 	}
 
 	// Ensure cleanup of temp file on failure
+	closed := false
+	renamed := false
 	defer func() {
-		tempFile.Close()
-		if _, err := os.Stat(tempPath); err == nil {
-			os.Remove(tempPath)
+		if !closed {
+			if closeErr := tempFile.Close(); closeErr != nil {
+				log.Warn().Err(closeErr).Str("temp_path", tempPath).Msg("failed to close temporary file")
+			}
+		}
+
+		if !renamed {
+			if removeErr := os.Remove(tempPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				log.Warn().Err(removeErr).Str("temp_path", tempPath).Msg("failed to remove temporary file")
+			}
 		}
 	}()
 
@@ -90,13 +126,18 @@ func (ls *LocalStorage) Store(ctx context.Context, path string, content io.Reade
 		return fmt.Errorf("failed to sync temporary file: %w", err)
 	}
 
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		log.Error().Err(err).Str("path", path).Str("temp_path", tempPath).Msg("failed to close temporary file")
+		return fmt.Errorf("failed to close temporary file: %w", err)
+	}
+	closed = true
 
 	// Atomic move from temp to final location
 	if err := os.Rename(tempPath, fullPath); err != nil {
 		log.Error().Err(err).Str("path", path).Str("temp_path", tempPath).Msg("failed to move temporary file to final location")
 		return fmt.Errorf("failed to move file to final location: %w", err)
 	}
+	renamed = true
 
 	// Calculate checksum for logging
 	checksum := hex.EncodeToString(hasher.Sum(nil))
@@ -119,7 +160,14 @@ func (ls *LocalStorage) Retrieve(ctx context.Context, path string) (io.ReadClose
 	ls.mutex.RLock()
 	defer ls.mutex.RUnlock()
 
-	fullPath := filepath.Join(ls.basePath, path)
+	if err := validateLocalPath(path); err != nil {
+		return nil, err
+	}
+
+	fullPath, err := resolveAndValidatePath(ls.basePath, path)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check if context is cancelled
 	select {
@@ -128,7 +176,7 @@ func (ls *LocalStorage) Retrieve(ctx context.Context, path string) (io.ReadClose
 	default:
 	}
 
-	file, err := os.Open(fullPath)
+	file, err := os.Open(fullPath) // #nosec G304 -- fullPath is validated to remain within basePath.
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Debug().Str("path", path).Msg("file not found")
@@ -161,7 +209,14 @@ func (ls *LocalStorage) Delete(ctx context.Context, path string) error {
 	ls.mutex.Lock()
 	defer ls.mutex.Unlock()
 
-	fullPath := filepath.Join(ls.basePath, path)
+	if err := validateLocalPath(path); err != nil {
+		return err
+	}
+
+	fullPath, err := resolveAndValidatePath(ls.basePath, path)
+	if err != nil {
+		return err
+	}
 
 	// Check if context is cancelled
 	select {
@@ -201,7 +256,14 @@ func (ls *LocalStorage) Exists(ctx context.Context, path string) (bool, error) {
 	ls.mutex.RLock()
 	defer ls.mutex.RUnlock()
 
-	fullPath := filepath.Join(ls.basePath, path)
+	if err := validateLocalPath(path); err != nil {
+		return false, err
+	}
+
+	fullPath, err := resolveAndValidatePath(ls.basePath, path)
+	if err != nil {
+		return false, err
+	}
 
 	// Check if context is cancelled
 	select {
@@ -210,7 +272,7 @@ func (ls *LocalStorage) Exists(ctx context.Context, path string) (bool, error) {
 	default:
 	}
 
-	_, err := os.Stat(fullPath)
+	_, err = os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -227,7 +289,14 @@ func (ls *LocalStorage) GetSize(ctx context.Context, path string) (int64, error)
 	ls.mutex.RLock()
 	defer ls.mutex.RUnlock()
 
-	fullPath := filepath.Join(ls.basePath, path)
+	if err := validateLocalPath(path); err != nil {
+		return 0, err
+	}
+
+	fullPath, err := resolveAndValidatePath(ls.basePath, path)
+	if err != nil {
+		return 0, err
+	}
 
 	// Check if context is cancelled
 	select {
@@ -258,7 +327,16 @@ func (ls *LocalStorage) List(ctx context.Context, prefix string) ([]string, erro
 	ls.mutex.RLock()
 	defer ls.mutex.RUnlock()
 
-	searchPath := filepath.Join(ls.basePath, prefix)
+	if prefix != "" {
+		if err := validateLocalPath(prefix); err != nil {
+			return nil, err
+		}
+	}
+
+	searchPath, err := resolveAndValidatePath(ls.basePath, prefix)
+	if err != nil {
+		return nil, err
+	}
 	var paths []string
 
 	// Check if context is cancelled
@@ -268,7 +346,7 @@ func (ls *LocalStorage) List(ctx context.Context, prefix string) ([]string, erro
 	default:
 	}
 
-	err := filepath.Walk(searchPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(searchPath, func(path string, info os.FileInfo, err error) error {
 		// Check for context cancellation during walk
 		select {
 		case <-ctx.Done():

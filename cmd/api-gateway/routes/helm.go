@@ -29,7 +29,7 @@ func HelmRoutes(api *gin.RouterGroup, registryService *registry.Service, authSer
 
 func handleHelmIndex(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := context.WithValue(c.Request.Context(), "registry", "helm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "helm")
 
 		filter := &types.ArtifactFilter{
 			Registry: "helm",
@@ -102,7 +102,7 @@ func handleHelmDownload(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "helm")
+		ctx := context.WithValue(c.Request.Context(), registryKey, "helm")
 
 		artifact, content, err := registryService.Download(ctx, "helm", chart, version)
 		if err != nil {
@@ -141,8 +141,8 @@ func handleHelmUpload(registryService *registry.Service) gin.HandlerFunc {
 		}
 		defer file.Close()
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "helm")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "helm")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		// Parse Helm chart filename: chartname-version.tgz
 		filename := header.Filename
@@ -190,8 +190,8 @@ func handleHelmDelete(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(c.Request.Context(), "registry", "helm")
-		ctx = context.WithValue(ctx, "user_id", user.ID)
+		ctx := context.WithValue(c.Request.Context(), registryKey, "helm")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
 		err := registryService.Delete(ctx, "helm", chart, version, user.ID)
 		if err != nil {
