@@ -106,7 +106,9 @@ func (sm *SessionManager) AppendChunk(ctx context.Context, sessionID string, dat
 		}
 
 		existingData, err := io.ReadAll(existing)
-		existing.Close()
+		if closeErr := existing.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to close existing data stream: %w", closeErr)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to read existing data: %w", err)
 		}
