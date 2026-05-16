@@ -3,6 +3,25 @@
 ## Project Overview
 Lodestone is a multi-format artifact registry written in Go that supports NuGet, npm, Cargo, OCI/Docker, Helm, RubyGems, OPA, Maven, and Go modules. It uses a microservices architecture with PostgreSQL for persistence and Redis for caching.
 
+## Agent Team, Models, and Skills
+
+Use the specialist team defined in `AGENTS.md` and `.github/chatmodes/`.
+
+### Model Defaults
+- Prefer non-frontier models by default.
+- Use frontier models only by escalation (architectural deadlock, repeated failures, high-risk security review).
+
+### Specialist Roles
+- **Orchestrator / Planner** (`gpt-5.4-mini`): decomposition, dependency management, handoffs.
+- **Registry Protocol Engineer** (`claude-sonnet-4.6`): protocol semantics and cross-registry contract consistency.
+- **Registry Implementation Engineer** (`gpt-5.3-codex`): format handler implementation and integration.
+- **Auth & RBAC Engineer** (`claude-sonnet-4.6`): JWT/API key behavior, ownership, authorization policy.
+- **Data & Migration Engineer** (`gpt-5.4`): GORM models, migrations, and index/query safety.
+- **Storage & Distribution Engineer** (`gpt-5.3-codex`): storage backends and artifact client compatibility.
+- **Metadata & Search Engineer** (`claude-sonnet-4.6`): indexing, search semantics, analytics behavior.
+- **Test & Reliability Engineer** (`gpt-5.4-mini`): integration/E2E/perf and regression prevention.
+- **Docs & Release Engineer** (`gpt-4.1`): Swagger/docs, CI workflows, release hygiene.
+
 ## Architecture Principles
 
 ### Clean Architecture
