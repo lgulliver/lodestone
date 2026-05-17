@@ -17,9 +17,9 @@ import (
 )
 
 var (
-	ErrProxyDisabled       = errors.New("upstream proxy disabled")
-	ErrUpstreamNotFound    = errors.New("upstream artifact not found")
-	ErrUpstreamTooLarge    = errors.New("upstream artifact exceeds configured size limit")
+	ErrProxyDisabled        = errors.New("upstream proxy disabled")
+	ErrUpstreamNotFound     = errors.New("upstream artifact not found")
+	ErrUpstreamTooLarge     = errors.New("upstream artifact exceeds configured size limit")
 	ErrUpstreamUnauthorized = errors.New("upstream request unauthorized")
 )
 
