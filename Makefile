@@ -15,6 +15,7 @@ GOVULNCHECK_VERSION ?= v1.1.4
 COVERAGE_SCOPE ?= ./internal/storage ./internal/registry/registries/maven
 TOOL_INSTALL_RETRIES ?= 3
 GO_TOOLCHAIN_VERSION ?= $(shell go env GOVERSION)
+GOVULNDB_URL ?= https://vuln.go.dev
 
 # Default target
 help: ## Show this help message
@@ -170,8 +171,12 @@ lint-strict: ## Run golangci-lint with pinned version
 	@echo "Running strict linting..."
 	@mkdir -p $(TOOLS_DIR)
 	@attempt=1; \
-	while ! GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) GOBIN=$(TOOLS_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); do \
+	while true; do \
+		GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) GOBIN=$(TOOLS_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 		status=$$?; \
+		if [ $$status -eq 0 ]; then \
+			break; \
+		fi; \
 		if [ $$attempt -ge $(TOOL_INSTALL_RETRIES) ]; then \
 			exit $$status; \
 		fi; \
@@ -275,8 +280,12 @@ static-analysis: ## Run static analysis (gosec + govulncheck)
 	@GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) GOBIN=$(TOOLS_DIR) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	@$(TOOLS_DIR)/gosec ./...
 	@attempt=1; \
-	while ! $(TOOLS_DIR)/govulncheck ./...; do \
+	while true; do \
+		$(TOOLS_DIR)/govulncheck -db=$(GOVULNDB_URL) ./...; \
 		status=$$?; \
+		if [ $$status -eq 0 ]; then \
+			break; \
+		fi; \
 		if [ $$attempt -ge $(TOOL_INSTALL_RETRIES) ]; then \
 			exit $$status; \
 		fi; \
