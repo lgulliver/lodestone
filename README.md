@@ -96,6 +96,24 @@ make build
 air
 ```
 
+### Web Client
+
+An initial Vue 3 web client is available under `/web` and mirrors the Lodestone registry explorer design.
+
+```bash
+# Install dependencies
+cd web
+npm install
+
+# Start the Vite dev server
+npm run dev
+
+# Build the production bundle
+npm run build
+```
+
+The current UI uses seeded registry data and a reusable shell so it can be connected to live Lodestone APIs incrementally.
+
 See the code structure and architecture documentation in the codebase for development guidelines.
 
 ## License
