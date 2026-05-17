@@ -271,8 +271,8 @@ security: ## Run security scan
 static-analysis: ## Run static analysis (gosec + govulncheck)
 	@echo "Running static analysis..."
 	@mkdir -p $(TOOLS_DIR)
-	@GOBIN=$(TOOLS_DIR) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
-	@GOBIN=$(TOOLS_DIR) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	@GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) GOBIN=$(TOOLS_DIR) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+	@GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) GOBIN=$(TOOLS_DIR) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	@$(TOOLS_DIR)/gosec ./...
 	@$(TOOLS_DIR)/govulncheck ./...
 	@echo "Static analysis complete!"
