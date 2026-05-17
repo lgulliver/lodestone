@@ -166,7 +166,9 @@ func (s *Service) doFetch(ctx context.Context, fetchURL, accept, authz string) (
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("failed upstream request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	switch response.StatusCode {
 	case http.StatusOK:
@@ -250,7 +252,9 @@ func (s *Service) getBearerToken(ctx context.Context, wwwAuthenticate string) (s
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("token endpoint returned %d", response.StatusCode)

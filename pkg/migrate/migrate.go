@@ -72,7 +72,9 @@ func (m *Migrator) GetAppliedMigrations() ([]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query applied migrations: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var versions []int
 	for rows.Next() {

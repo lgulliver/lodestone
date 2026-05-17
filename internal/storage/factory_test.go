@@ -41,7 +41,9 @@ func TestStorageFactory_CreateLocalStorage(t *testing.T) {
 	// Retrieve
 	reader, err := storage.Retrieve(ctx, testPath)
 	assert.NoError(t, err)
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	// Verify content
 	retrievedContent := make([]byte, len(testContent))

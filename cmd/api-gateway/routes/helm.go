@@ -117,7 +117,9 @@ func handleHelmDownload(registryService *registry.Service) gin.HandlerFunc {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
 
-		defer content.Close()
+		defer func() {
+			_ = content.Close()
+		}()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream chart"})
@@ -139,7 +141,9 @@ func handleHelmUpload(registryService *registry.Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "chart file required"})
 			return
 		}
-		defer file.Close()
+		defer func() {
+			_ = file.Close()
+		}()
 
 		ctx := context.WithValue(c.Request.Context(), registryKey, "helm")
 		ctx = context.WithValue(ctx, userIDKey, user.ID)

@@ -373,7 +373,9 @@ func extractNuspecFromNupkg(nupkgData []byte) (*NuSpec, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to open .nuspec file: %w", err)
 			}
-			defer rc.Close()
+			defer func() {
+				_ = rc.Close()
+			}()
 
 			// Read the .nuspec content
 			nuspecBytes, err := io.ReadAll(rc)

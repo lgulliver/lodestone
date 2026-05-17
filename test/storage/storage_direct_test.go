@@ -24,7 +24,9 @@ func TestStorageDirectOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create temp directory:", err)
 	}
-	defer os.RemoveAll(testDir)
+	defer func() {
+		_ = os.RemoveAll(testDir)
+	}()
 
 	// Setup storage
 	storageBackend, err := storage.NewLocalStorage(testDir)
@@ -92,7 +94,9 @@ func testBasicOperations(t *testing.T, storage storage.BlobStorage) {
 	if err != nil {
 		t.Fatal("Retrieve failed:", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
@@ -148,7 +152,9 @@ func testAtomicWrites(t *testing.T, storage storage.BlobStorage) {
 	if err != nil {
 		t.Fatal("Retrieve after atomic store failed:", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
@@ -218,7 +224,9 @@ func testConcurrentAccess(t *testing.T, storage storage.BlobStorage) {
 				t.Logf("❌ Concurrent retrieve failed: %v", err)
 				return
 			}
-			defer reader.Close()
+			defer func() {
+				_ = reader.Close()
+			}()
 
 			data, err := io.ReadAll(reader)
 			if err != nil {
@@ -312,7 +320,7 @@ func testFileTypes(t *testing.T, storage storage.BlobStorage) {
 		}
 
 		data, err := io.ReadAll(reader)
-		reader.Close()
+		_ = reader.Close()
 		if err != nil {
 			t.Fatalf("Failed to read %s: %v", tf.name, err)
 		}

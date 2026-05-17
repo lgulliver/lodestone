@@ -30,7 +30,9 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
-	defer database.Close()
+	defer func() {
+		_ = database.Close()
+	}()
 
 	// Database migrations should be run separately using the migrate command
 	// This avoids conflicts between GORM AutoMigrate and SQL migrations

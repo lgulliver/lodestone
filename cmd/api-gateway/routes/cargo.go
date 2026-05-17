@@ -145,7 +145,9 @@ func handleCargoDownload(registryService *registry.Service) gin.HandlerFunc {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
 
-		defer content.Close()
+		defer func() {
+			_ = content.Close()
+		}()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream crate"})
@@ -168,7 +170,9 @@ func handleCargoPublish(registryService *registry.Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "crate file required"})
 			return
 		}
-		defer file.Close()
+		defer func() {
+			_ = file.Close()
+		}()
 
 		ctx := context.WithValue(c.Request.Context(), registryKey, "cargo")
 		ctx = context.WithValue(ctx, userIDKey, user.ID)

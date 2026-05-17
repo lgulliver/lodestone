@@ -92,7 +92,9 @@ func handleGoVersionFile(registryService *registry.Service) gin.HandlerFunc {
 				c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 			}
 
-			defer content.Close()
+			defer func() {
+				_ = content.Close()
+			}()
 			_, err = io.Copy(c.Writer, content)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream module"})
@@ -144,7 +146,9 @@ func handleGoVersionFile(registryService *registry.Service) gin.HandlerFunc {
 				c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 			}
 
-			defer content.Close()
+			defer func() {
+				_ = content.Close()
+			}()
 			_, err = io.Copy(c.Writer, content)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream module"})

@@ -118,7 +118,9 @@ func TestLocalStorage_Store(t *testing.T) {
 				// Verify content
 				retrieved, err := storage.Retrieve(ctx, tt.path)
 				assert.NoError(t, err)
-				defer retrieved.Close()
+				defer func() {
+					_ = retrieved.Close()
+				}()
 
 				content, err := io.ReadAll(retrieved)
 				assert.NoError(t, err)
@@ -197,7 +199,9 @@ func TestLocalStorage_Retrieve(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, reader)
-				defer reader.Close()
+				defer func() {
+					_ = reader.Close()
+				}()
 
 				content, err := io.ReadAll(reader)
 				assert.NoError(t, err)
@@ -436,7 +440,9 @@ func TestLocalStorage_ConcurrentAccess(t *testing.T) {
 
 				reader, err := storage.Retrieve(ctx, testPath)
 				assert.NoError(t, err)
-				defer reader.Close()
+				defer func() {
+					_ = reader.Close()
+				}()
 
 				content, err := io.ReadAll(reader)
 				assert.NoError(t, err)
@@ -489,7 +495,9 @@ func TestLocalStorage_IntegrityVerification(t *testing.T) {
 	// Retrieve and verify content matches
 	reader, err := storage.Retrieve(ctx, testPath)
 	require.NoError(t, err)
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	retrievedContent, err := io.ReadAll(reader)
 	require.NoError(t, err)
@@ -604,7 +612,7 @@ func setupTestStorage(t *testing.T) *LocalStorage {
 func createTempFile(t *testing.T) string {
 	tempFile, err := os.CreateTemp("", "test")
 	require.NoError(t, err)
-	tempFile.Close()
+	require.NoError(t, tempFile.Close())
 	return tempFile.Name()
 }
 

@@ -232,7 +232,9 @@ func extractPackageJSONFromTarball(tarballData []byte) (*PackageManifest, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gzipReader.Close()
+	defer func() {
+		_ = gzipReader.Close()
+	}()
 
 	// Create a tar reader
 	tarReader := tar.NewReader(gzipReader)

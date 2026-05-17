@@ -40,7 +40,9 @@ func extractNuGetPackageInfo(fileContent []byte) (string, string, error) {
 			if err != nil {
 				return "", "", fmt.Errorf("failed to open nuspec file: %w", err)
 			}
-			defer rc.Close()
+			defer func() {
+				_ = rc.Close()
+			}()
 
 			// Read and parse the .nuspec XML
 			nuspecContent, err := io.ReadAll(rc)
@@ -251,7 +253,9 @@ func handleNuGetDownload(registryService *registry.Service) gin.HandlerFunc {
 			c.Header("Content-Length", strconv.FormatInt(artifact.Size, 10))
 		}
 
-		defer content.Close()
+		defer func() {
+			_ = content.Close()
+		}()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
 			// Log error but don't send JSON response as headers are already sent
@@ -333,7 +337,9 @@ func handleNuGetUpload(registryService *registry.Service) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "no package file found in upload"})
 				return
 			}
-			defer file.Close()
+			defer func() {
+				_ = file.Close()
+			}()
 
 			filename = header.Filename
 			fileContent, err = io.ReadAll(file)
@@ -670,7 +676,9 @@ func handleNuGetSymbolUpload(registryService *registry.Service) gin.HandlerFunc 
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open uploaded file"})
 				return
 			}
-			defer src.Close()
+			defer func() {
+				_ = src.Close()
+			}()
 			content, err = io.ReadAll(src)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to read uploaded file")
@@ -846,7 +854,9 @@ func handleNuGetSymbolDownload(registryService *registry.Service) gin.HandlerFun
 			c.JSON(http.StatusNotFound, gin.H{"error": "symbol package not found"})
 			return
 		}
-		defer content.Close()
+		defer func() {
+			_ = content.Close()
+		}()
 
 		// Set appropriate headers for symbol package download
 		c.Header("Content-Type", "application/vnd.nuget.symbolpackage")
@@ -884,7 +894,9 @@ func extractSymbolPackageInfo(fileContent []byte) (string, string, error) {
 			if err != nil {
 				return "", "", fmt.Errorf("failed to open nuspec file: %w", err)
 			}
-			defer rc.Close()
+			defer func() {
+				_ = rc.Close()
+			}()
 
 			// Read and parse the .nuspec XML
 			nuspecContent, err := io.ReadAll(rc)

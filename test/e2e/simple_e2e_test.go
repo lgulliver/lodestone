@@ -103,7 +103,9 @@ func TestSimpleE2EWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create temp directory:", err)
 	}
-	defer os.RemoveAll(testDir)
+	defer func() {
+		_ = os.RemoveAll(testDir)
+	}()
 
 	// Setup test environment
 	service, testUserID := setupSimpleTestEnvironment(t, testDir)
@@ -212,7 +214,9 @@ func testSimpleWorkflow(t *testing.T, service *registry.Service, userID uuid.UUI
 	if err != nil {
 		t.Fatal("Download failed:", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	downloadedContent, err := io.ReadAll(reader)
 	if err != nil {

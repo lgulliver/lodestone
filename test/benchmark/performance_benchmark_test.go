@@ -34,7 +34,9 @@ func TestStoragePerformance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create temp directory:", err)
 	}
-	defer os.RemoveAll(testDir)
+	defer func() {
+		_ = os.RemoveAll(testDir)
+	}()
 
 	// Initialize enhanced storage
 	storageDir := filepath.Join(testDir, "storage")
@@ -180,7 +182,7 @@ func benchmarkRead(t *testing.T, storage storage.BlobStorage) BenchmarkResult {
 		}
 
 		data, err := io.ReadAll(reader)
-		reader.Close()
+		_ = reader.Close()
 		if err != nil {
 			t.Fatal("Failed to read file content:", err)
 		}
@@ -229,7 +231,7 @@ func benchmarkMixedWorkload(t *testing.T, storage storage.BlobStorage) Benchmark
 			reader, err := storage.Retrieve(ctx, path)
 			if err == nil {
 				data, _ := io.ReadAll(reader)
-				reader.Close()
+				_ = reader.Close()
 				totalBytes += int64(len(data))
 			}
 

@@ -98,7 +98,9 @@ func TestStorageEndToEndIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create temp directory:", err)
 	}
-	defer os.RemoveAll(testDir)
+	defer func() {
+		_ = os.RemoveAll(testDir)
+	}()
 
 	// Setup database and service
 	service, testUserID := setupTestServiceE2E(t, testDir)
@@ -235,7 +237,9 @@ func testBasicWorkflowE2E(t *testing.T, service *registry.Service, userID uuid.U
 	downloadedArtifact, reader, err := service.Download(ctx, "npm", packageName, version)
 	assert.NoError(t, err, "Download should not fail")
 	assert.NotNil(t, reader, "Reader should not be nil")
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	downloadedContent, err := io.ReadAll(reader)
 	assert.NoError(t, err, "Reading content should not fail")
@@ -339,7 +343,7 @@ func testConcurrentOperationsE2E(t *testing.T, service *registry.Service, userID
 		_, reader, err := service.Download(ctx, "npm", packageName, "1.0.0")
 		assert.NoError(t, err, "Download should not fail for %s", packageName)
 		if reader != nil {
-			reader.Close()
+			_ = reader.Close()
 		}
 	}
 
@@ -440,7 +444,7 @@ func testMultipleRegistriesE2E(t *testing.T, service *registry.Service, userID u
 		}
 
 		downloadedContent, err := io.ReadAll(reader)
-		reader.Close()
+		_ = reader.Close()
 		if err != nil {
 			t.Fatalf("Failed to read content from %s registry: %v", test.registry, err)
 		}

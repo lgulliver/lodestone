@@ -37,7 +37,9 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create migrator")
 	}
-	defer migrator.Close()
+	defer func() {
+		_ = migrator.Close()
+	}()
 
 	// Run migrations
 	if *up {

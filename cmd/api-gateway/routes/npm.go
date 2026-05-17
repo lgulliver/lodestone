@@ -56,7 +56,9 @@ func computeArtifactSHA1(ctx context.Context, registryService *registry.Service,
 	if err != nil {
 		return "", fmt.Errorf("failed to download artifact for SHA1 computation: %w", err)
 	}
-	defer content.Close()
+	defer func() {
+		_ = content.Close()
+	}()
 
 	// Read all content and compute SHA1
 	contentBytes, err := io.ReadAll(content)
@@ -479,7 +481,9 @@ func handleNPMDownload(registryService *registry.Service) gin.HandlerFunc {
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
 
-		defer content.Close()
+		defer func() {
+			_ = content.Close()
+		}()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream package content"})
@@ -514,7 +518,9 @@ func handleNPMScopedDownload(registryService *registry.Service) gin.HandlerFunc 
 			c.Header("Content-Length", fmt.Sprintf("%d", artifact.Size))
 		}
 
-		defer content.Close()
+		defer func() {
+			_ = content.Close()
+		}()
 		_, err = io.Copy(c.Writer, content)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stream package content"})
@@ -1155,7 +1161,9 @@ func extractPackageJSONFromTarball(tarballData []byte) (map[string]interface{}, 
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gzipReader.Close()
+	defer func() {
+		_ = gzipReader.Close()
+	}()
 
 	// Create a tar reader
 	tarReader := tar.NewReader(gzipReader)

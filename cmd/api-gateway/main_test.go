@@ -12,17 +12,10 @@ func TestMain_ConfigLoading(t *testing.T) {
 	// This mainly tests that imports and basic setup work
 
 	// Set minimal required environment variables
-	os.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
-	os.Setenv("REDIS_URL", "redis://localhost:6379")
-	os.Setenv("JWT_SECRET", "test-secret-key-for-testing-only")
-	os.Setenv("PORT", "8080")
-
-	defer func() {
-		os.Unsetenv("DATABASE_URL")
-		os.Unsetenv("REDIS_URL")
-		os.Unsetenv("JWT_SECRET")
-		os.Unsetenv("PORT")
-	}()
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
+	t.Setenv("JWT_SECRET", "test-secret-key-for-testing-only")
+	t.Setenv("PORT", "8080")
 
 	// This test mainly verifies that all imports resolve correctly
 	// and the configuration can be loaded without panicking
@@ -63,14 +56,7 @@ func TestMain_EnvironmentVariables(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear the environment variable
-			originalValue := os.Getenv(tt.envVar)
-			os.Unsetenv(tt.envVar)
-
-			defer func() {
-				if originalValue != "" {
-					os.Setenv(tt.envVar, originalValue)
-				}
-			}()
+			t.Setenv(tt.envVar, "")
 
 			value := os.Getenv(tt.envVar)
 			if tt.required {

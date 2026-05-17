@@ -173,7 +173,9 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, downloadedArtifact)
 		require.NotNil(t, reader)
-		defer reader.Close()
+		defer func() {
+			_ = reader.Close()
+		}()
 
 		// Verify downloaded artifact metadata
 		assert.Equal(t, artifact.ID, downloadedArtifact.ID)

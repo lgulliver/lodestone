@@ -209,7 +209,9 @@ func (r *Registry) ManifestExists(ctx context.Context, repository, reference str
 	if err != nil {
 		return false, "", 0, "", fmt.Errorf("failed to read manifest: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	manifestContent, err := io.ReadAll(reader)
 	if err != nil {

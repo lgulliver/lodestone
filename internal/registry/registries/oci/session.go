@@ -148,7 +148,9 @@ func (sm *SessionManager) CompleteUpload(ctx context.Context, sessionID, expecte
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to retrieve uploaded data: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	// Calculate SHA256 digest
 	hasher := sha256.New()

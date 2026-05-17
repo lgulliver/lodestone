@@ -617,7 +617,9 @@ func TestDownload_UpstreamFetchAndCache(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, artifact)
 	require.NotNil(t, content)
-	defer content.Close()
+	defer func() {
+		_ = content.Close()
+	}()
 
 	assert.Equal(t, sanitizedName, artifact.Name)
 	assert.Equal(t, "1.0.0", artifact.Version)

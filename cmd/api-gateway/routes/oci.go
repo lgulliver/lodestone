@@ -146,7 +146,9 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 				return
 			}
 		}
-		defer manifest.Close()
+		defer func() {
+			_ = manifest.Close()
+		}()
 
 		// Read the manifest content to detect media type
 		manifestContent, err := io.ReadAll(manifest)
@@ -457,7 +459,9 @@ func handleOCIBlobGet(registryService *registry.Service) gin.HandlerFunc {
 				return
 			}
 		}
-		defer reader.Close()
+		defer func() {
+			_ = reader.Close()
+		}()
 
 		c.Header("Content-Type", "application/octet-stream")
 		c.Header("Docker-Content-Digest", digest)
