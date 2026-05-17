@@ -52,7 +52,7 @@ func main() {
 
 	// Initialize services with database connections
 	authService := auth.NewService(database, cache, &cfg.Auth)
-	registryService := registry.NewService(database, storageBackend)
+	registryService := registry.NewService(database, storageBackend, &cfg.Proxy)
 
 	// Initialize registry settings service for runtime control
 	registrySettingsService := registry.NewRegistrySettingsService(database.DB)

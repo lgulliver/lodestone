@@ -92,7 +92,7 @@ func TestStorageIntegrationWithRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create registry service
-	registryService := registry.NewService(commonDB, storageInstance)
+	registryService := registry.NewService(commonDB, storageInstance, nil)
 
 	// Create test user
 	user := &types.User{
@@ -291,7 +291,7 @@ func TestStorageFactoryIntegrationWithRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create registry service with factory-created storage
-	registryService := registry.NewService(commonDB, storageInstance)
+	registryService := registry.NewService(commonDB, storageInstance, nil)
 
 	// Create proper npm package
 	packageJSON := `{"name": "factory-test-package", "version": "1.0.0"}`

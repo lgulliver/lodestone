@@ -197,7 +197,7 @@ func setupTestServiceE2E(t *testing.T, testDir string) (*registry.Service, uuid.
 	commonDB := &common.Database{DB: db}
 
 	// Create registry service
-	service := registry.NewService(commonDB, storageBackend)
+	service := registry.NewService(commonDB, storageBackend, nil)
 
 	return service, testUser.ID
 }

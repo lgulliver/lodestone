@@ -18,6 +18,7 @@ type Config struct {
 	Storage  StorageConfig  `yaml:"storage"`
 	Auth     AuthConfig     `yaml:"auth"`
 	Logging  LoggingConfig  `yaml:"logging"`
+	Proxy    ProxyConfig    `yaml:"proxy"`
 }
 
 // ServerConfig holds HTTP server configuration
@@ -93,6 +94,33 @@ type LoggingConfig struct {
 	Format string `yaml:"format"` // json, text
 }
 
+// ProxyConfig holds upstream proxy/cache configuration
+type ProxyConfig struct {
+	Enabled          bool                  `yaml:"enabled"`
+	TimeoutSeconds   int                   `yaml:"timeoutSeconds"`
+	MaxArtifactBytes int64                 `yaml:"maxArtifactBytes"`
+	Registries       ProxyRegistriesConfig `yaml:"registries"`
+}
+
+// ProxyRegistriesConfig holds per-registry upstream settings
+type ProxyRegistriesConfig struct {
+	NPM      ProxyRegistryConfig `yaml:"npm"`
+	NuGet    ProxyRegistryConfig `yaml:"nuget"`
+	Maven    ProxyRegistryConfig `yaml:"maven"`
+	Go       ProxyRegistryConfig `yaml:"go"`
+	Helm     ProxyRegistryConfig `yaml:"helm"`
+	Cargo    ProxyRegistryConfig `yaml:"cargo"`
+	RubyGems ProxyRegistryConfig `yaml:"rubygems"`
+	OPA      ProxyRegistryConfig `yaml:"opa"`
+	OCI      ProxyRegistryConfig `yaml:"oci"`
+}
+
+// ProxyRegistryConfig holds upstream settings for one registry family
+type ProxyRegistryConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Upstream string `yaml:"upstream"`
+}
+
 // LoadFromEnv loads configuration from environment variables
 func LoadFromEnv() *Config {
 	return &Config{
@@ -150,6 +178,49 @@ func LoadFromEnv() *Config {
 			Level:  getEnv("LOG_LEVEL", "info"),
 			Format: getEnv("LOG_FORMAT", "json"),
 		},
+		Proxy: ProxyConfig{
+			Enabled:          getEnvBool("PROXY_ENABLED", false),
+			TimeoutSeconds:   getEnvInt("PROXY_TIMEOUT_SECONDS", 30),
+			MaxArtifactBytes: getEnvInt64("PROXY_MAX_ARTIFACT_BYTES", 0),
+			Registries: ProxyRegistriesConfig{
+				NPM: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_NPM_ENABLED", true),
+					Upstream: getEnv("PROXY_NPM_UPSTREAM", "https://registry.npmjs.org"),
+				},
+				NuGet: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_NUGET_ENABLED", true),
+					Upstream: getEnv("PROXY_NUGET_UPSTREAM", "https://api.nuget.org/v3/index.json"),
+				},
+				Maven: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_MAVEN_ENABLED", true),
+					Upstream: getEnv("PROXY_MAVEN_UPSTREAM", "https://repo1.maven.org/maven2"),
+				},
+				Go: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_GO_ENABLED", true),
+					Upstream: getEnv("PROXY_GO_UPSTREAM", "https://proxy.golang.org"),
+				},
+				Helm: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_HELM_ENABLED", true),
+					Upstream: getEnv("PROXY_HELM_UPSTREAM", "https://charts.bitnami.com/bitnami"),
+				},
+				Cargo: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_CARGO_ENABLED", true),
+					Upstream: getEnv("PROXY_CARGO_UPSTREAM", "https://crates.io"),
+				},
+				RubyGems: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_RUBYGEMS_ENABLED", true),
+					Upstream: getEnv("PROXY_RUBYGEMS_UPSTREAM", "https://rubygems.org"),
+				},
+				OPA: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_OPA_ENABLED", true),
+					Upstream: getEnv("PROXY_OPA_UPSTREAM", ""),
+				},
+				OCI: ProxyRegistryConfig{
+					Enabled:  getEnvBool("PROXY_OCI_ENABLED", true),
+					Upstream: getEnv("PROXY_OCI_UPSTREAM", "https://registry-1.docker.io"),
+				},
+			},
+		},
 	}
 }
 
@@ -198,6 +269,15 @@ func getEnv(key, defaultValue string) string {
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+func getEnvInt64(key string, defaultValue int64) int64 {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
 			return intValue
 		}
 	}

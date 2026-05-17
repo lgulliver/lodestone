@@ -176,7 +176,7 @@ func setupSimpleTestEnvironment(t *testing.T, testDir string) (*registry.Service
 
 	// Create database wrapper and service
 	commonDB := &common.Database{DB: db}
-	service := registry.NewService(commonDB, storageBackend)
+	service := registry.NewService(commonDB, storageBackend, nil)
 
 	return service, testUser.ID
 }

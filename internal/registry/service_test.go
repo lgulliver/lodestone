@@ -1,13 +1,19 @@
 package registry
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/lgulliver/lodestone/internal/common"
+	"github.com/lgulliver/lodestone/pkg/config"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -113,10 +119,14 @@ func setupTestDB(t *testing.T) *common.Database {
 }
 
 func setupTestService(t *testing.T) (*Service, *common.Database, *MockBlobStorage) {
+	return setupTestServiceWithProxyConfig(t, nil)
+}
+
+func setupTestServiceWithProxyConfig(t *testing.T, proxyCfg *config.ProxyConfig) (*Service, *common.Database, *MockBlobStorage) {
 	db := setupTestDB(t)
 	mockStorage := &MockBlobStorage{}
 
-	service := NewService(db, mockStorage)
+	service := NewService(db, mockStorage, proxyCfg)
 	return service, db, mockStorage
 }
 
@@ -136,7 +146,7 @@ func TestNewService(t *testing.T) {
 	db := setupTestDB(t)
 	mockStorage := &MockBlobStorage{}
 
-	service := NewService(db, mockStorage)
+	service := NewService(db, mockStorage, nil)
 
 	assert.NotNil(t, service)
 	assert.Equal(t, db, service.DB)
@@ -536,4 +546,87 @@ func TestGetRegistry_UnsupportedType(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, handler)
 	assert.Contains(t, err.Error(), "unsupported registry type")
+}
+
+func buildTestNPMTarball(t *testing.T, name, version string) []byte {
+	t.Helper()
+
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	manifest := map[string]interface{}{
+		"name":    name,
+		"version": version,
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	require.NoError(t, err)
+
+	header := &tar.Header{
+		Name: "package/package.json",
+		Mode: 0o644,
+		Size: int64(len(manifestBytes)),
+	}
+	require.NoError(t, tarWriter.WriteHeader(header))
+	_, err = tarWriter.Write(manifestBytes)
+	require.NoError(t, err)
+	require.NoError(t, tarWriter.Close())
+	require.NoError(t, gzipWriter.Close())
+
+	return buffer.Bytes()
+}
+
+func TestDownload_UpstreamFetchAndCache(t *testing.T) {
+	requestName := "Test_Package"
+	sanitizedName := "test-package"
+	upstreamContent := buildTestNPMTarball(t, sanitizedName, "1.0.0")
+	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/Test_Package/-/Test_Package-1.0.0.tgz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(upstreamContent)
+	}))
+	defer upstreamServer.Close()
+
+	proxyCfg := &config.ProxyConfig{
+		Enabled:        true,
+		TimeoutSeconds: 10,
+		Registries: config.ProxyRegistriesConfig{
+			NPM: config.ProxyRegistryConfig{
+				Enabled:  true,
+				Upstream: upstreamServer.URL,
+			},
+		},
+	}
+
+	service, db, mockStorage := setupTestServiceWithProxyConfig(t, proxyCfg)
+	ctx := context.Background()
+
+	mockStorage.
+		On("Store", mock.Anything, "npm/Test_Package/1.0.0.tgz", mock.Anything, "application/octet-stream").
+		Return(nil).
+		Once()
+	mockStorage.
+		On("Retrieve", mock.Anything, "npm/Test_Package/1.0.0.tgz").
+		Return(io.NopCloser(bytes.NewReader(upstreamContent)), nil).
+		Once()
+
+	artifact, content, err := service.Download(ctx, "npm", requestName, "1.0.0")
+	require.NoError(t, err)
+	require.NotNil(t, artifact)
+	require.NotNil(t, content)
+	defer content.Close()
+
+	assert.Equal(t, sanitizedName, artifact.Name)
+	assert.Equal(t, "1.0.0", artifact.Version)
+	assert.Equal(t, "npm", artifact.Registry)
+	assert.True(t, artifact.Metadata["proxy_cached"].(bool))
+
+	var saved types.Artifact
+	require.NoError(t, db.Where("name = ? AND version = ? AND registry = ?", sanitizedName, "1.0.0", "npm").First(&saved).Error)
+	assert.Equal(t, "npm/Test_Package/1.0.0.tgz", saved.StoragePath)
+
+	mockStorage.AssertExpectations(t)
 }
