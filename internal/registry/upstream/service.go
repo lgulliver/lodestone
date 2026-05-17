@@ -134,7 +134,7 @@ func (s *Service) fetchOCI(ctx context.Context, fetchURL, accept string) (*Fetch
 	wwwAuthenticate := headers.Get("WWW-Authenticate")
 	token, tokenErr := s.getBearerToken(ctx, wwwAuthenticate)
 	if tokenErr != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to acquire OCI upstream bearer token: %w", tokenErr)
 	}
 
 	return s.fetchURLWithAuth(ctx, fetchURL, accept, "Bearer "+token)

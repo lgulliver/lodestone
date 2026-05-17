@@ -32,15 +32,19 @@ type Service struct {
 }
 
 // NewService creates a new registry service
-func NewService(db *common.Database, storage storage.BlobStorage) *Service {
-	cfg := config.LoadFromEnv()
+func NewService(db *common.Database, storage storage.BlobStorage, proxyCfg *config.ProxyConfig) *Service {
+	effectiveProxyConfig := config.ProxyConfig{}
+	if proxyCfg != nil {
+		effectiveProxyConfig = *proxyCfg
+	}
+
 	service := &Service{
 		DB:        db,
 		Storage:   storage,
 		Ownership: NewOwnershipService(db.DB),
 		Settings:  NewRegistrySettingsService(db.DB),
 		handlers:  make(map[string]Handler),
-		upstream:  upstream.NewService(cfg.Proxy),
+		upstream:  upstream.NewService(effectiveProxyConfig),
 	}
 
 	// Create registry factory
@@ -199,19 +203,35 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 		return nil, nil, fmt.Errorf("registry %s is currently disabled", registryType)
 	}
 
-	// Get artifact metadata from database
-	var artifact types.Artifact
-	if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
-		name, version, registryType).First(&artifact).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			if upstreamErr := s.ensureUpstreamCached(ctx, registryType, name, version, "artifact"); upstreamErr == nil {
-				return s.Download(ctx, registryType, name, version)
-			}
-			return nil, nil, fmt.Errorf("artifact not found: %s:%s", name, version)
+	sanitizedName := utils.SanitizePackageName(name, registryType)
+
+	loadArtifact := func() (*types.Artifact, error) {
+		var loaded types.Artifact
+		if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
+			sanitizedName, version, registryType).First(&loaded).Error; err != nil {
+			return nil, err
 		}
-		return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
+		return &loaded, nil
 	}
 
+	artifact, err := loadArtifact()
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			if upstreamErr := s.ensureUpstreamCached(ctx, registryType, name, version, "artifact"); upstreamErr == nil {
+				artifact, err = loadArtifact()
+				if err == nil {
+					// cached successfully and found locally
+				} else if err != gorm.ErrRecordNotFound {
+					return nil, nil, fmt.Errorf("failed to get artifact after caching: %w", err)
+				}
+			}
+			if err == gorm.ErrRecordNotFound {
+				return nil, nil, fmt.Errorf("artifact not found: %s:%s", name, version)
+			}
+		} else {
+			return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
+		}
+	}
 	// Log artifact details
 	log.Info().
 		Str("name", artifact.Name).
@@ -230,9 +250,9 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 	}
 
 	// Increment download counter
-	s.DB.Model(&artifact).Where("id = ?", artifact.ID).Update("downloads", gorm.Expr("downloads + ?", 1))
+	s.DB.Model(artifact).Where("id = ?", artifact.ID).Update("downloads", gorm.Expr("downloads + ?", 1))
 
-	return &artifact, content, nil
+	return artifact, content, nil
 }
 
 // EnsureUpstreamCached pulls and stores an upstream artifact into local storage when configured.

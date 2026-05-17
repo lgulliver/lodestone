@@ -9,11 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/lgulliver/lodestone/internal/common"
+	"github.com/lgulliver/lodestone/pkg/config"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -119,10 +119,14 @@ func setupTestDB(t *testing.T) *common.Database {
 }
 
 func setupTestService(t *testing.T) (*Service, *common.Database, *MockBlobStorage) {
+	return setupTestServiceWithProxyConfig(t, nil)
+}
+
+func setupTestServiceWithProxyConfig(t *testing.T, proxyCfg *config.ProxyConfig) (*Service, *common.Database, *MockBlobStorage) {
 	db := setupTestDB(t)
 	mockStorage := &MockBlobStorage{}
 
-	service := NewService(db, mockStorage)
+	service := NewService(db, mockStorage, proxyCfg)
 	return service, db, mockStorage
 }
 
@@ -142,7 +146,7 @@ func TestNewService(t *testing.T) {
 	db := setupTestDB(t)
 	mockStorage := &MockBlobStorage{}
 
-	service := NewService(db, mockStorage)
+	service := NewService(db, mockStorage, nil)
 
 	assert.NotNil(t, service)
 	assert.Equal(t, db, service.DB)
@@ -573,9 +577,11 @@ func buildTestNPMTarball(t *testing.T, name, version string) []byte {
 }
 
 func TestDownload_UpstreamFetchAndCache(t *testing.T) {
-	upstreamContent := buildTestNPMTarball(t, "test-package", "1.0.0")
+	requestName := "Test_Package"
+	sanitizedName := "test-package"
+	upstreamContent := buildTestNPMTarball(t, sanitizedName, "1.0.0")
 	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/test-package/-/test-package-1.0.0.tgz" {
+		if r.URL.Path != "/Test_Package/-/Test_Package-1.0.0.tgz" {
 			http.NotFound(w, r)
 			return
 		}
@@ -584,49 +590,43 @@ func TestDownload_UpstreamFetchAndCache(t *testing.T) {
 	}))
 	defer upstreamServer.Close()
 
-	t.Setenv("PROXY_ENABLED", "true")
-	t.Setenv("PROXY_NPM_ENABLED", "true")
-	t.Setenv("PROXY_NPM_UPSTREAM", upstreamServer.URL)
-	t.Setenv("PROXY_TIMEOUT_SECONDS", "10")
-	t.Setenv("PROXY_MAX_ARTIFACT_BYTES", "0")
-	t.Setenv("PROXY_NUGET_UPSTREAM", "")
-	t.Setenv("PROXY_MAVEN_UPSTREAM", "")
-	t.Setenv("PROXY_GO_UPSTREAM", "")
-	t.Setenv("PROXY_HELM_UPSTREAM", "")
-	t.Setenv("PROXY_CARGO_UPSTREAM", "")
-	t.Setenv("PROXY_RUBYGEMS_UPSTREAM", "")
-	t.Setenv("PROXY_OPA_UPSTREAM", "")
-	t.Setenv("PROXY_OCI_UPSTREAM", "")
-	defer func() {
-		_ = os.Unsetenv("PROXY_ENABLED")
-	}()
+	proxyCfg := &config.ProxyConfig{
+		Enabled:        true,
+		TimeoutSeconds: 10,
+		Registries: config.ProxyRegistriesConfig{
+			NPM: config.ProxyRegistryConfig{
+				Enabled:  true,
+				Upstream: upstreamServer.URL,
+			},
+		},
+	}
 
-	service, db, mockStorage := setupTestService(t)
+	service, db, mockStorage := setupTestServiceWithProxyConfig(t, proxyCfg)
 	ctx := context.Background()
 
 	mockStorage.
-		On("Store", mock.Anything, "npm/test-package/1.0.0.tgz", mock.Anything, "application/octet-stream").
+		On("Store", mock.Anything, "npm/Test_Package/1.0.0.tgz", mock.Anything, "application/octet-stream").
 		Return(nil).
 		Once()
 	mockStorage.
-		On("Retrieve", mock.Anything, "npm/test-package/1.0.0.tgz").
+		On("Retrieve", mock.Anything, "npm/Test_Package/1.0.0.tgz").
 		Return(io.NopCloser(bytes.NewReader(upstreamContent)), nil).
 		Once()
 
-	artifact, content, err := service.Download(ctx, "npm", "test-package", "1.0.0")
+	artifact, content, err := service.Download(ctx, "npm", requestName, "1.0.0")
 	require.NoError(t, err)
 	require.NotNil(t, artifact)
 	require.NotNil(t, content)
 	defer content.Close()
 
-	assert.Equal(t, "test-package", artifact.Name)
+	assert.Equal(t, sanitizedName, artifact.Name)
 	assert.Equal(t, "1.0.0", artifact.Version)
 	assert.Equal(t, "npm", artifact.Registry)
 	assert.True(t, artifact.Metadata["proxy_cached"].(bool))
 
 	var saved types.Artifact
-	require.NoError(t, db.Where("name = ? AND version = ? AND registry = ?", "test-package", "1.0.0", "npm").First(&saved).Error)
-	assert.Equal(t, "npm/test-package/1.0.0.tgz", saved.StoragePath)
+	require.NoError(t, db.Where("name = ? AND version = ? AND registry = ?", sanitizedName, "1.0.0", "npm").First(&saved).Error)
+	assert.Equal(t, "npm/Test_Package/1.0.0.tgz", saved.StoragePath)
 
 	mockStorage.AssertExpectations(t)
 }

@@ -193,7 +193,7 @@ func setupOCIOwnershipRouteTest(t *testing.T) (*registry.Service, *types.User, *
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&types.User{}, &types.Artifact{}, &types.PackageOwnership{}, &types.RegistrySetting{}))
 
-	registryService := registry.NewService(&common.Database{DB: db}, newOCIRouteTestStorage())
+	registryService := registry.NewService(&common.Database{DB: db}, newOCIRouteTestStorage(), nil)
 
 	owner := &types.User{Username: "owner", Email: "owner@example.com", Password: "pw", IsActive: true}
 	outsider := &types.User{Username: "outsider", Email: "outsider@example.com", Password: "pw", IsActive: true}
