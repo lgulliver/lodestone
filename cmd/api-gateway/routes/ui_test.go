@@ -30,7 +30,6 @@ func setupUIRouteTestAuthService(t *testing.T) (*auth.Service, *config.AuthConfi
 		JWTExpiration:       24 * time.Hour,
 		BCryptCost:          4,
 		UISessionCookieName: "lodestone_ui_session",
-		UICSRFCookieName:    "lodestone_ui_csrf",
 		UISessionExpiration: 2 * time.Hour,
 		UICookieSecure:      false,
 		UICookieSameSite:    "Lax",
@@ -93,12 +92,10 @@ func TestUIRoutes_LoginSetsSecureBrowserCookies(t *testing.T) {
 
 	cookies := w.Result().Cookies()
 	sessionCookie := findCookie(t, cookies, authConfig.UISessionCookieName)
-	csrfCookie := findCookie(t, cookies, authConfig.UICSRFCookieName)
 
 	assert.True(t, sessionCookie.HttpOnly)
-	assert.False(t, csrfCookie.HttpOnly)
 	assert.Equal(t, uiCookiePath, sessionCookie.Path)
-	assert.Equal(t, uiCookiePath, csrfCookie.Path)
+	assert.NotEmpty(t, w.Header().Get("X-CSRF-Token"))
 }
 
 func TestUIRoutes_SessionAndAPIKeyLifecycle(t *testing.T) {
@@ -115,7 +112,8 @@ func TestUIRoutes_SessionAndAPIKeyLifecycle(t *testing.T) {
 
 	cookies := loginResp.Result().Cookies()
 	sessionCookie := findCookie(t, cookies, authConfig.UISessionCookieName)
-	csrfCookie := findCookie(t, cookies, authConfig.UICSRFCookieName)
+	csrfToken := loginResp.Header().Get("X-CSRF-Token")
+	require.NotEmpty(t, csrfToken)
 
 	sessionReq := httptest.NewRequest(http.MethodGet, "/api/v1/ui/auth/session", nil)
 	sessionReq.AddCookie(sessionCookie)
@@ -124,13 +122,13 @@ func TestUIRoutes_SessionAndAPIKeyLifecycle(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, sessionResp.Code)
 	assert.Contains(t, sessionResp.Body.String(), `"username":"ui-user"`)
+	assert.Equal(t, csrfToken, sessionResp.Header().Get("X-CSRF-Token"))
 
 	createBody := bytes.NewBufferString(`{"name":"ui-key","permissions":["read"]}`)
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/ui/auth/api-keys", createBody)
 	createReq.Header.Set("Content-Type", "application/json")
-	createReq.Header.Set("X-CSRF-Token", csrfCookie.Value)
+	createReq.Header.Set("X-CSRF-Token", csrfToken)
 	createReq.AddCookie(sessionCookie)
-	createReq.AddCookie(csrfCookie)
 	createResp := httptest.NewRecorder()
 	router.ServeHTTP(createResp, createReq)
 
@@ -155,9 +153,8 @@ func TestUIRoutes_SessionAndAPIKeyLifecycle(t *testing.T) {
 	assert.Contains(t, listResp.Body.String(), `"name":"ui-key"`)
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/ui/auth/api-keys/"+createPayload.APIKey.ID, nil)
-	deleteReq.Header.Set("X-CSRF-Token", csrfCookie.Value)
+	deleteReq.Header.Set("X-CSRF-Token", csrfToken)
 	deleteReq.AddCookie(sessionCookie)
-	deleteReq.AddCookie(csrfCookie)
 	deleteResp := httptest.NewRecorder()
 	router.ServeHTTP(deleteResp, deleteReq)
 

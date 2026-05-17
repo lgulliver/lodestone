@@ -90,7 +90,6 @@ type AuthConfig struct {
 	JWTExpiration       time.Duration `yaml:"jwt_expiration"`
 	BCryptCost          int           `yaml:"bcrypt_cost"`
 	UISessionCookieName string        `yaml:"ui_session_cookie_name"`
-	UICSRFCookieName    string        `yaml:"ui_csrf_cookie_name"`
 	UISessionExpiration time.Duration `yaml:"ui_session_expiration"`
 	UICookieSecure      bool          `yaml:"ui_cookie_secure"`
 	UICookieSameSite    string        `yaml:"ui_cookie_same_site"`
@@ -183,7 +182,6 @@ func LoadFromEnv() *Config {
 			JWTExpiration:       getEnvDuration("JWT_EXPIRATION", 24*time.Hour),
 			BCryptCost:          getEnvInt("BCRYPT_COST", 12),
 			UISessionCookieName: getEnv("UI_SESSION_COOKIE_NAME", "lodestone_ui_session"),
-			UICSRFCookieName:    getEnv("UI_CSRF_COOKIE_NAME", "lodestone_ui_csrf"),
 			UISessionExpiration: getEnvDuration("UI_SESSION_EXPIRATION", 8*time.Hour),
 			UICookieSecure:      getEnvBool("UI_COOKIE_SECURE", true),
 			UICookieSameSite:    getEnv("UI_COOKIE_SAME_SITE", "Lax"),

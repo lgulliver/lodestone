@@ -65,7 +65,6 @@ func TestLoadFromEnv_ProxyConfig(t *testing.T) {
 func TestLoadFromEnv_UIAuthAndCORSConfig(t *testing.T) {
 	t.Setenv("CORS_ALLOWED_ORIGINS", "https://ui.example.com, http://localhost:5173")
 	t.Setenv("UI_SESSION_COOKIE_NAME", "lodestone_session")
-	t.Setenv("UI_CSRF_COOKIE_NAME", "lodestone_csrf")
 	t.Setenv("UI_SESSION_EXPIRATION", "2h")
 	t.Setenv("UI_COOKIE_SECURE", "false")
 	t.Setenv("UI_COOKIE_SAME_SITE", "Strict")
@@ -74,7 +73,6 @@ func TestLoadFromEnv_UIAuthAndCORSConfig(t *testing.T) {
 
 	assert.Equal(t, []string{"https://ui.example.com", "http://localhost:5173"}, cfg.Server.CORSAllowedOrigins)
 	assert.Equal(t, "lodestone_session", cfg.Auth.UISessionCookieName)
-	assert.Equal(t, "lodestone_csrf", cfg.Auth.UICSRFCookieName)
 	assert.Equal(t, 2*time.Hour, cfg.Auth.UISessionExpiration)
 	assert.False(t, cfg.Auth.UICookieSecure)
 	assert.Equal(t, http.SameSiteStrictMode, cfg.Auth.UISameSite())

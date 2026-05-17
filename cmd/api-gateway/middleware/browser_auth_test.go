@@ -21,7 +21,6 @@ func testUIAuthConfig() *config.AuthConfig {
 		JWTExpiration:       time.Hour,
 		BCryptCost:          4,
 		UISessionCookieName: "lodestone_ui_session",
-		UICSRFCookieName:    "lodestone_ui_csrf",
 		UISessionExpiration: time.Hour,
 		UICookieSameSite:    "Lax",
 	}
@@ -104,8 +103,7 @@ func TestUIAuthMiddleware_AcceptsValidCSRFToken(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodDelete, "/ui/api-keys/test", nil)
 	req.AddCookie(&http.Cookie{Name: "lodestone_ui_session", Value: "session-token"})
-	req.AddCookie(&http.Cookie{Name: "lodestone_ui_csrf", Value: "csrf-token"})
-	req.Header.Set("X-CSRF-Token", "csrf-token")
+	req.Header.Set("X-CSRF-Token", BuildCSRFSignedToken("session-token", testUIAuthConfig().JWTSecret))
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)

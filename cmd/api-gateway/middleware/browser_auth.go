@@ -2,7 +2,10 @@ package middleware
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -28,9 +31,9 @@ func UIAuthMiddleware(authService AuthServiceInterface, authConfig *config.AuthC
 		}
 
 		if requiresCSRFMiddlewareCheck(c.Request.Method) {
-			csrfCookie, cookieErr := c.Cookie(authConfig.UICSRFCookieName)
 			csrfHeader := c.GetHeader("X-CSRF-Token")
-			if cookieErr != nil || csrfHeader == "" || subtle.ConstantTimeCompare([]byte(csrfCookie), []byte(csrfHeader)) != 1 {
+			expectedCSRFToken := BuildCSRFSignedToken(sessionToken, authConfig.JWTSecret)
+			if csrfHeader == "" || subtle.ConstantTimeCompare([]byte(expectedCSRFToken), []byte(csrfHeader)) != 1 {
 				c.JSON(http.StatusForbidden, gin.H{"error": "csrf validation failed"})
 				c.Abort()
 				return
@@ -49,4 +52,11 @@ func requiresCSRFMiddlewareCheck(method string) bool {
 	default:
 		return true
 	}
+}
+
+// BuildCSRFSignedToken derives a stable CSRF token from the authenticated session token.
+func BuildCSRFSignedToken(sessionToken, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(sessionToken))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }

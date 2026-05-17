@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/cmd/api-gateway/middleware"
 	"github.com/lgulliver/lodestone/internal/auth"
 	"github.com/lgulliver/lodestone/pkg/config"
@@ -22,7 +21,7 @@ func UIRoutes(api *gin.RouterGroup, authService *auth.Service, authConfig *confi
 
 	authenticated := ui.Group("/")
 	authenticated.Use(middleware.UIAuthMiddleware(authService, authConfig))
-	authenticated.GET("/auth/session", handleUISession())
+	authenticated.GET("/auth/session", handleUISession(authConfig))
 	authenticated.POST("/auth/logout", handleUILogout(authConfig))
 	authenticated.POST("/auth/api-keys", handleCreateAPIKey(authService))
 	authenticated.GET("/auth/api-keys", handleListAPIKeys(authService))
@@ -50,11 +49,14 @@ func handleUILogin(authService *auth.Service, authConfig *config.AuthConfig) gin
 			return
 		}
 
-		csrfToken := uuid.NewString()
 		cookieTTL := int(time.Until(authToken.ExpiresAt).Seconds())
+		if cookieTTL < 0 {
+			cookieTTL = 0
+		}
+		csrfToken := middleware.BuildCSRFSignedToken(authToken.Token, authConfig.JWTSecret)
 		setNoStore(c)
-		setBrowserCookie(c, authConfig, authConfig.UISessionCookieName, authToken.Token, cookieTTL, true)
-		setBrowserCookie(c, authConfig, authConfig.UICSRFCookieName, csrfToken, cookieTTL, false)
+		setBrowserSessionCookie(c, authConfig, authToken.Token, cookieTTL)
+		c.Header("X-CSRF-Token", csrfToken)
 
 		c.JSON(http.StatusOK, gin.H{
 			"user": buildUserResponse(user),
@@ -62,7 +64,7 @@ func handleUILogin(authService *auth.Service, authConfig *config.AuthConfig) gin
 	}
 }
 
-func handleUISession() gin.HandlerFunc {
+func handleUISession(authConfig *config.AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := middleware.GetUserFromContext(c)
 		if !exists {
@@ -71,6 +73,9 @@ func handleUISession() gin.HandlerFunc {
 		}
 
 		setNoStore(c)
+		if sessionToken, err := c.Cookie(authConfig.UISessionCookieName); err == nil {
+			c.Header("X-CSRF-Token", middleware.BuildCSRFSignedToken(sessionToken, authConfig.JWTSecret))
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"user": buildUserResponse(user),
 		})
@@ -80,8 +85,7 @@ func handleUISession() gin.HandlerFunc {
 func handleUILogout(authConfig *config.AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		setNoStore(c)
-		clearBrowserCookie(c, authConfig, authConfig.UISessionCookieName, true)
-		clearBrowserCookie(c, authConfig, authConfig.UICSRFCookieName, false)
+		clearBrowserSessionCookie(c, authConfig)
 		c.JSON(http.StatusOK, gin.H{"message": "logout successful"})
 	}
 }
@@ -97,13 +101,13 @@ func buildUserResponse(user *types.User) gin.H {
 	}
 }
 
-func setBrowserCookie(c *gin.Context, authConfig *config.AuthConfig, name, value string, maxAge int, httpOnly bool) {
+func setBrowserSessionCookie(c *gin.Context, authConfig *config.AuthConfig, value string, maxAge int) {
 	c.SetSameSite(authConfig.UISameSite())
-	c.SetCookie(name, value, maxAge, uiCookiePath, "", authConfig.UICookieSecure, httpOnly)
+	c.SetCookie(authConfig.UISessionCookieName, value, maxAge, uiCookiePath, "", authConfig.UICookieSecure, true)
 }
 
-func clearBrowserCookie(c *gin.Context, authConfig *config.AuthConfig, name string, httpOnly bool) {
-	setBrowserCookie(c, authConfig, name, "", -1, httpOnly)
+func clearBrowserSessionCookie(c *gin.Context, authConfig *config.AuthConfig) {
+	setBrowserSessionCookie(c, authConfig, "", -1)
 }
 
 func setNoStore(c *gin.Context) {
