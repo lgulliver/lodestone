@@ -29,18 +29,20 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const run = context.payload.workflow_run;
-            const title = `[CI Failure] ${run.name} failed on ${run.head_branch}`;
+            const runDay = (run.created_at || new Date().toISOString()).slice(0, 10);
+            const title = `[CI Failure] ${run.name} failed (${runDay})`;
             const body = [
               "A CI workflow failed on the default branch.",
               "",
               `- **Workflow:** ${run.name}`,
               `- **Conclusion:** ${run.conclusion}`,
+              `- **Date (UTC):** ${runDay}`,
               `- **Commit:** ${run.head_sha}`,
               `- **Run URL:** ${run.html_url}`,
               `- **Triggered by:** ${run.actor?.login || "unknown"}`
             ].join("\n");
 
-            const { data: issues } = await github.rest.issues.listForRepo({
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
               state: "open",
