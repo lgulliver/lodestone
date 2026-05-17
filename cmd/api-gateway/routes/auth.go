@@ -127,6 +127,7 @@ func handleLogin(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
+		setNoStore(c)
 		c.JSON(http.StatusOK, gin.H{
 			"token": authToken.Token,
 			"user": gin.H{
@@ -176,6 +177,7 @@ func handleCreateAPIKey(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
+		setNoStore(c)
 		c.JSON(http.StatusCreated, gin.H{
 			"api_key": apiKey,
 			"key":     keyValue,

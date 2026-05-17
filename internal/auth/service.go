@@ -90,10 +90,7 @@ func (s *Service) Register(ctx context.Context, req *types.RegisterRequest) (*ty
 	return user, nil
 }
 
-// Login authenticates a user and returns a JWT token
-func (s *Service) Login(ctx context.Context, req *types.LoginRequest) (*types.AuthToken, error) {
-	log.Info().Str("username", req.Username).Msg("Login attempt")
-
+func (s *Service) authenticateUser(ctx context.Context, req *types.LoginRequest) (*types.User, error) {
 	// Find user
 	var user types.User
 	if err := s.db.Where("username = ?", req.Username).First(&user).Error; err != nil {
@@ -117,8 +114,24 @@ func (s *Service) Login(ctx context.Context, req *types.LoginRequest) (*types.Au
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	// Generate JWT token
-	token, err := utils.GenerateJWT(user.ID, s.config.JWTSecret, s.config.JWTExpiration)
+	return &user, nil
+}
+
+// Login authenticates a user and returns a JWT token.
+func (s *Service) Login(ctx context.Context, req *types.LoginRequest) (*types.AuthToken, error) {
+	return s.LoginWithExpiration(ctx, req, s.config.JWTExpiration)
+}
+
+// LoginWithExpiration authenticates a user and returns a JWT token with the requested lifetime.
+func (s *Service) LoginWithExpiration(ctx context.Context, req *types.LoginRequest, expiration time.Duration) (*types.AuthToken, error) {
+	log.Info().Str("username", req.Username).Msg("Login attempt")
+
+	user, err := s.authenticateUser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := utils.GenerateJWT(user.ID, s.config.JWTSecret, expiration)
 	if err != nil {
 		log.Error().Err(err).Str("username", req.Username).Msg("Failed to generate JWT token")
 		return nil, fmt.Errorf("failed to generate token: %w", err)
@@ -128,14 +141,14 @@ func (s *Service) Login(ctx context.Context, req *types.LoginRequest) (*types.Au
 
 	authToken := &types.AuthToken{
 		Token:     token,
-		ExpiresAt: time.Now().Add(s.config.JWTExpiration),
+		ExpiresAt: time.Now().Add(expiration),
 		UserID:    user.ID,
 	}
 
 	// Cache the token if cache is available
 	if s.cache != nil {
 		cacheKey := fmt.Sprintf("token:%s", user.ID.String())
-		if err := s.cache.Set(ctx, cacheKey, authToken, s.config.JWTExpiration); err != nil {
+		if err := s.cache.Set(ctx, cacheKey, authToken, expiration); err != nil {
 			// Log error but don't fail the login
 			log.Warn().Err(err).Msg("Failed to cache token")
 		}

@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -23,11 +25,12 @@ type Config struct {
 
 // ServerConfig holds HTTP server configuration
 type ServerConfig struct {
-	Host         string        `yaml:"host"`
-	Port         int           `yaml:"port"`
-	ReadTimeout  time.Duration `yaml:"read_timeout"`
-	WriteTimeout time.Duration `yaml:"write_timeout"`
-	IdleTimeout  time.Duration `yaml:"idle_timeout"`
+	Host               string        `yaml:"host"`
+	Port               int           `yaml:"port"`
+	ReadTimeout        time.Duration `yaml:"read_timeout"`
+	WriteTimeout       time.Duration `yaml:"write_timeout"`
+	IdleTimeout        time.Duration `yaml:"idle_timeout"`
+	CORSAllowedOrigins []string      `yaml:"cors_allowed_origins"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -83,9 +86,14 @@ type AzureStorageConfig struct {
 
 // AuthConfig holds authentication settings
 type AuthConfig struct {
-	JWTSecret     string        `yaml:"jwt_secret"`
-	JWTExpiration time.Duration `yaml:"jwt_expiration"`
-	BCryptCost    int           `yaml:"bcrypt_cost"`
+	JWTSecret           string        `yaml:"jwt_secret"`
+	JWTExpiration       time.Duration `yaml:"jwt_expiration"`
+	BCryptCost          int           `yaml:"bcrypt_cost"`
+	UISessionCookieName string        `yaml:"ui_session_cookie_name"`
+	UICSRFCookieName    string        `yaml:"ui_csrf_cookie_name"`
+	UISessionExpiration time.Duration `yaml:"ui_session_expiration"`
+	UICookieSecure      bool          `yaml:"ui_cookie_secure"`
+	UICookieSameSite    string        `yaml:"ui_cookie_same_site"`
 }
 
 // LoggingConfig holds logging configuration
@@ -125,11 +133,12 @@ type ProxyRegistryConfig struct {
 func LoadFromEnv() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
-			Port:         getEnvInt("SERVER_PORT", 8080),
-			ReadTimeout:  getEnvDuration("SERVER_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout: getEnvDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:  getEnvDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			Host:               getEnv("SERVER_HOST", "0.0.0.0"),
+			Port:               getEnvInt("SERVER_PORT", 8080),
+			ReadTimeout:        getEnvDuration("SERVER_READ_TIMEOUT", 30*time.Second),
+			WriteTimeout:       getEnvDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
+			IdleTimeout:        getEnvDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			CORSAllowedOrigins: getEnvStringSlice("CORS_ALLOWED_ORIGINS"),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -170,9 +179,14 @@ func LoadFromEnv() *Config {
 			},
 		},
 		Auth: AuthConfig{
-			JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
-			JWTExpiration: getEnvDuration("JWT_EXPIRATION", 24*time.Hour),
-			BCryptCost:    getEnvInt("BCRYPT_COST", 12),
+			JWTSecret:           getEnv("JWT_SECRET", "your-secret-key"),
+			JWTExpiration:       getEnvDuration("JWT_EXPIRATION", 24*time.Hour),
+			BCryptCost:          getEnvInt("BCRYPT_COST", 12),
+			UISessionCookieName: getEnv("UI_SESSION_COOKIE_NAME", "lodestone_ui_session"),
+			UICSRFCookieName:    getEnv("UI_CSRF_COOKIE_NAME", "lodestone_ui_csrf"),
+			UISessionExpiration: getEnvDuration("UI_SESSION_EXPIRATION", 8*time.Hour),
+			UICookieSecure:      getEnvBool("UI_COOKIE_SECURE", true),
+			UICookieSameSite:    getEnv("UI_COOKIE_SAME_SITE", "Lax"),
 		},
 		Logging: LoggingConfig{
 			Level:  getEnv("LOG_LEVEL", "info"),
@@ -258,6 +272,20 @@ func (c *LoggingConfig) SetupLogging() {
 	// Default is JSON format, which is already set by zerolog
 }
 
+// UISameSite returns the configured browser session cookie SameSite mode.
+func (c *AuthConfig) UISameSite() http.SameSite {
+	switch strings.ToLower(strings.TrimSpace(c.UICookieSameSite)) {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	case "lax":
+		fallthrough
+	default:
+		return http.SameSiteLaxMode
+	}
+}
+
 // Helper functions for environment variable parsing
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
@@ -282,6 +310,24 @@ func getEnvInt64(key string, defaultValue int64) int64 {
 		}
 	}
 	return defaultValue
+}
+
+func getEnvStringSlice(key string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil
+	}
+
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+
+	return values
 }
 
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {

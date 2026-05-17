@@ -60,19 +60,7 @@ func main() {
 	// Set up Gin router
 	router := gin.Default()
 
-	// CORS middleware
-	router.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, X-API-Key")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
+	router.Use(middleware.CORSMiddleware(cfg.Server.CORSAllowedOrigins))
 	router.Use(middleware.MetricsMiddleware())
 	router.Use(middleware.TracingMiddleware("lodestone-api-gateway"))
 
@@ -99,6 +87,7 @@ func main() {
 
 	// Set up all package format routes with registry validation
 	routes.AuthRoutes(api, authService)
+	routes.UIRoutes(api, authService, &cfg.Auth)
 	routes.AdminRoutes(api, registryService, authService) // Admin routes without registry validation
 	routes.PackageOwnershipRoutes(api, registryService, authService)
 	routes.NuGetRoutes(packageRoutes, registryService, authService)

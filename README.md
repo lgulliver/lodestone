@@ -114,6 +114,8 @@ npm run build
 
 The current UI uses seeded registry data and a reusable shell so it can be connected to live Lodestone APIs incrementally.
 
+For browser-based integrations, prefer the cookie-backed UI endpoints under `/api/v1/ui/*` instead of exposing bearer tokens or API keys to the frontend. Configure trusted browser origins with `CORS_ALLOWED_ORIGINS`, and adjust UI cookie behavior with `UI_SESSION_COOKIE_NAME`, `UI_CSRF_COOKIE_NAME`, `UI_SESSION_EXPIRATION`, `UI_COOKIE_SECURE`, and `UI_COOKIE_SAME_SITE`.
+
 See the code structure and architecture documentation in the codebase for development guidelines.
 
 ## License
