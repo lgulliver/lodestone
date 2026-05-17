@@ -274,7 +274,16 @@ static-analysis: ## Run static analysis (gosec + govulncheck)
 	@GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) GOBIN=$(TOOLS_DIR) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 	@GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) GOBIN=$(TOOLS_DIR) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	@$(TOOLS_DIR)/gosec ./...
-	@$(TOOLS_DIR)/govulncheck ./...
+	@attempt=1; \
+	while ! $(TOOLS_DIR)/govulncheck ./...; do \
+		status=$$?; \
+		if [ $$attempt -ge $(TOOL_INSTALL_RETRIES) ]; then \
+			exit $$status; \
+		fi; \
+		attempt=$$((attempt + 1)); \
+		echo "Retrying govulncheck ($$attempt/$(TOOL_INSTALL_RETRIES))..."; \
+		sleep 2; \
+	done
 	@echo "Static analysis complete!"
 
 # Performance benchmarks
