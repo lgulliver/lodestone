@@ -1,9 +1,15 @@
 package registry
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -536,4 +542,91 @@ func TestGetRegistry_UnsupportedType(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, handler)
 	assert.Contains(t, err.Error(), "unsupported registry type")
+}
+
+func buildTestNPMTarball(t *testing.T, name, version string) []byte {
+	t.Helper()
+
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	manifest := map[string]interface{}{
+		"name":    name,
+		"version": version,
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	require.NoError(t, err)
+
+	header := &tar.Header{
+		Name: "package/package.json",
+		Mode: 0o644,
+		Size: int64(len(manifestBytes)),
+	}
+	require.NoError(t, tarWriter.WriteHeader(header))
+	_, err = tarWriter.Write(manifestBytes)
+	require.NoError(t, err)
+	require.NoError(t, tarWriter.Close())
+	require.NoError(t, gzipWriter.Close())
+
+	return buffer.Bytes()
+}
+
+func TestDownload_UpstreamFetchAndCache(t *testing.T) {
+	upstreamContent := buildTestNPMTarball(t, "test-package", "1.0.0")
+	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/test-package/-/test-package-1.0.0.tgz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(upstreamContent)
+	}))
+	defer upstreamServer.Close()
+
+	t.Setenv("PROXY_ENABLED", "true")
+	t.Setenv("PROXY_NPM_ENABLED", "true")
+	t.Setenv("PROXY_NPM_UPSTREAM", upstreamServer.URL)
+	t.Setenv("PROXY_TIMEOUT_SECONDS", "10")
+	t.Setenv("PROXY_MAX_ARTIFACT_BYTES", "0")
+	t.Setenv("PROXY_NUGET_UPSTREAM", "")
+	t.Setenv("PROXY_MAVEN_UPSTREAM", "")
+	t.Setenv("PROXY_GO_UPSTREAM", "")
+	t.Setenv("PROXY_HELM_UPSTREAM", "")
+	t.Setenv("PROXY_CARGO_UPSTREAM", "")
+	t.Setenv("PROXY_RUBYGEMS_UPSTREAM", "")
+	t.Setenv("PROXY_OPA_UPSTREAM", "")
+	t.Setenv("PROXY_OCI_UPSTREAM", "")
+	defer func() {
+		_ = os.Unsetenv("PROXY_ENABLED")
+	}()
+
+	service, db, mockStorage := setupTestService(t)
+	ctx := context.Background()
+
+	mockStorage.
+		On("Store", mock.Anything, "npm/test-package/1.0.0.tgz", mock.Anything, "application/octet-stream").
+		Return(nil).
+		Once()
+	mockStorage.
+		On("Retrieve", mock.Anything, "npm/test-package/1.0.0.tgz").
+		Return(io.NopCloser(bytes.NewReader(upstreamContent)), nil).
+		Once()
+
+	artifact, content, err := service.Download(ctx, "npm", "test-package", "1.0.0")
+	require.NoError(t, err)
+	require.NotNil(t, artifact)
+	require.NotNil(t, content)
+	defer content.Close()
+
+	assert.Equal(t, "test-package", artifact.Name)
+	assert.Equal(t, "1.0.0", artifact.Version)
+	assert.Equal(t, "npm", artifact.Registry)
+	assert.True(t, artifact.Metadata["proxy_cached"].(bool))
+
+	var saved types.Artifact
+	require.NoError(t, db.Where("name = ? AND version = ? AND registry = ?", "test-package", "1.0.0", "npm").First(&saved).Error)
+	assert.Equal(t, "npm/test-package/1.0.0.tgz", saved.StoragePath)
+
+	mockStorage.AssertExpectations(t)
 }

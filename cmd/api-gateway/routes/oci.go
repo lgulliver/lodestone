@@ -133,11 +133,18 @@ func handleOCIManifestGet(registryService *registry.Service) gin.HandlerFunc {
 		manifest, digest, size, err := ociRegistry.GetManifest(c.Request.Context(), name, reference)
 		if err != nil {
 			if strings.Contains(err.Error(), "not found") {
-				c.JSON(http.StatusNotFound, gin.H{"error": "manifest not found"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve manifest"})
+				if cacheErr := registryService.EnsureUpstreamCached(c.Request.Context(), "oci", name, reference, "manifest"); cacheErr == nil {
+					manifest, digest, size, err = ociRegistry.GetManifest(c.Request.Context(), name, reference)
+				}
 			}
-			return
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					c.JSON(http.StatusNotFound, gin.H{"error": "manifest not found"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve manifest"})
+				}
+				return
+			}
 		}
 		defer manifest.Close()
 
@@ -369,6 +376,16 @@ func handleOCIManifestHead(registryService *registry.Service) gin.HandlerFunc {
 		}
 
 		if !exists {
+			if cacheErr := registryService.EnsureUpstreamCached(c.Request.Context(), "oci", name, reference, "manifest"); cacheErr == nil {
+				exists, digest, size, mediaType, err = ociRegistry.ManifestExists(c.Request.Context(), name, reference)
+				if err != nil {
+					c.Status(http.StatusInternalServerError)
+					return
+				}
+			}
+		}
+
+		if !exists {
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -427,11 +444,18 @@ func handleOCIBlobGet(registryService *registry.Service) gin.HandlerFunc {
 		reader, size, err := ociRegistry.GetBlob(c.Request.Context(), name, digest)
 		if err != nil {
 			if strings.Contains(err.Error(), "not found") {
-				c.JSON(http.StatusNotFound, gin.H{"error": "blob not found"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve blob"})
+				if cacheErr := registryService.EnsureUpstreamCached(c.Request.Context(), "oci", name, digest, "blob"); cacheErr == nil {
+					reader, size, err = ociRegistry.GetBlob(c.Request.Context(), name, digest)
+				}
 			}
-			return
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					c.JSON(http.StatusNotFound, gin.H{"error": "blob not found"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve blob"})
+				}
+				return
+			}
 		}
 		defer reader.Close()
 
@@ -493,6 +517,16 @@ func handleOCIBlobHead(registryService *registry.Service) gin.HandlerFunc {
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
 			return
+		}
+
+		if !exists {
+			if cacheErr := registryService.EnsureUpstreamCached(c.Request.Context(), "oci", name, digest, "blob"); cacheErr == nil {
+				exists, size, err = ociRegistry.BlobExists(c.Request.Context(), name, digest)
+				if err != nil {
+					c.Status(http.StatusInternalServerError)
+					return
+				}
+			}
 		}
 
 		if !exists {

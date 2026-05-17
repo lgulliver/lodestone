@@ -2,14 +2,18 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/lgulliver/lodestone/internal/common"
+	"github.com/lgulliver/lodestone/internal/registry/upstream"
 	"github.com/lgulliver/lodestone/internal/storage"
+	"github.com/lgulliver/lodestone/pkg/config"
 	"github.com/lgulliver/lodestone/pkg/types"
 	"github.com/lgulliver/lodestone/pkg/utils"
 	"github.com/rs/zerolog/log"
@@ -24,16 +28,19 @@ type Service struct {
 	Settings  *RegistrySettingsService
 	factory   *Factory
 	handlers  map[string]Handler
+	upstream  *upstream.Service
 }
 
 // NewService creates a new registry service
 func NewService(db *common.Database, storage storage.BlobStorage) *Service {
+	cfg := config.LoadFromEnv()
 	service := &Service{
 		DB:        db,
 		Storage:   storage,
 		Ownership: NewOwnershipService(db.DB),
 		Settings:  NewRegistrySettingsService(db.DB),
 		handlers:  make(map[string]Handler),
+		upstream:  upstream.NewService(cfg.Proxy),
 	}
 
 	// Create registry factory
@@ -197,6 +204,9 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 	if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
 		name, version, registryType).First(&artifact).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			if upstreamErr := s.ensureUpstreamCached(ctx, registryType, name, version, "artifact"); upstreamErr == nil {
+				return s.Download(ctx, registryType, name, version)
+			}
 			return nil, nil, fmt.Errorf("artifact not found: %s:%s", name, version)
 		}
 		return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
@@ -223,6 +233,116 @@ func (s *Service) Download(ctx context.Context, registryType, name, version stri
 	s.DB.Model(&artifact).Where("id = ?", artifact.ID).Update("downloads", gorm.Expr("downloads + ?", 1))
 
 	return &artifact, content, nil
+}
+
+// EnsureUpstreamCached pulls and stores an upstream artifact into local storage when configured.
+func (s *Service) EnsureUpstreamCached(ctx context.Context, registryType, name, version, resource string) error {
+	return s.ensureUpstreamCached(ctx, registryType, name, version, resource)
+}
+
+func (s *Service) ensureUpstreamCached(ctx context.Context, registryType, name, version, resource string) error {
+	if s.upstream == nil {
+		return upstream.ErrProxyDisabled
+	}
+
+	fetched, err := s.upstream.Fetch(ctx, upstream.ProxyRequest{
+		Registry: registryType,
+		Resource: resource,
+		Name:     name,
+		Version:  version,
+	})
+	if err != nil {
+		if !errors.Is(err, upstream.ErrProxyDisabled) && !errors.Is(err, upstream.ErrUpstreamNotFound) {
+			log.Warn().
+				Err(err).
+				Str("registry", registryType).
+				Str("name", name).
+				Str("version", version).
+				Str("resource", resource).
+				Msg("upstream fetch failed")
+		}
+		return err
+	}
+
+	_, err = s.cacheUpstreamArtifact(ctx, registryType, name, version, fetched)
+	return err
+}
+
+func (s *Service) cacheUpstreamArtifact(ctx context.Context, registryType, name, version string, fetched *upstream.FetchedArtifact) (*types.Artifact, error) {
+	handler, exists := s.handlers[registryType]
+	if !exists {
+		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
+	}
+
+	sanitizedName := utils.SanitizePackageName(name, registryType)
+	var existing types.Artifact
+	if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
+		sanitizedName, version, registryType).First(&existing).Error; err == nil {
+		return &existing, nil
+	}
+
+	artifact := &types.Artifact{
+		ID:          uuid.New(),
+		Name:        sanitizedName,
+		Version:     version,
+		Registry:    registryType,
+		ContentType: fetched.ContentType,
+		Size:        int64(len(fetched.Content)),
+		SHA256:      utils.ComputeSHA256(fetched.Content),
+		PublishedBy: uuid.Nil,
+		IsPublic:    true,
+	}
+
+	validationArtifact := *artifact
+	if registryType == "rubygems" && !strings.HasSuffix(validationArtifact.Name, ".gem") {
+		validationArtifact.Name = validationArtifact.Name + ".gem"
+	}
+
+	if err := handler.Validate(&validationArtifact, fetched.Content); err != nil {
+		return nil, fmt.Errorf("upstream validation failed: %w", err)
+	}
+
+	metadata, err := handler.GetMetadata(fetched.Content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract upstream metadata: %w", err)
+	}
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	metadata["proxy_cached"] = true
+	metadata["proxy_cached_at"] = time.Now().UTC().Format(time.RFC3339)
+	metadata["proxy_upstream_url"] = fetched.SourceURL
+	artifact.Metadata = metadata
+
+	artifact.StoragePath = handler.GenerateStoragePath(name, version)
+	if err := handler.Upload(ctx, artifact, fetched.Content); err != nil {
+		return nil, fmt.Errorf("failed to store upstream artifact: %w", err)
+	}
+
+	if err := s.DB.Create(artifact).Error; err != nil {
+		_ = s.Storage.Delete(ctx, artifact.StoragePath)
+		return nil, fmt.Errorf("failed to persist cached artifact metadata: %w", err)
+	}
+
+	log.Info().
+		Str("registry", registryType).
+		Str("name", artifact.Name).
+		Str("version", artifact.Version).
+		Int("size", len(fetched.Content)).
+		Msg("cached artifact from upstream")
+
+	// For OCI manifests, also write digest-addressable record when possible
+	if registryType == "oci" && artifact.SHA256 != "" && !strings.HasPrefix(version, "sha256:") {
+		digestArtifact := *artifact
+		digestArtifact.ID = uuid.New()
+		digestArtifact.Version = "sha256:" + artifact.SHA256
+		digestArtifact.StoragePath = handler.GenerateStoragePath(name, digestArtifact.Version)
+		if err := handler.Upload(ctx, &digestArtifact, fetched.Content); err == nil {
+			_ = s.DB.Create(&digestArtifact).Error
+		}
+	}
+
+	return artifact, nil
 }
 
 // List returns artifacts matching the filter
