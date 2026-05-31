@@ -196,8 +196,7 @@ func TestFetchBuildURLError(t *testing.T) {
 }
 
 func TestFetchOCIBearerFlow(t *testing.T) {
-	var tokenSrv *httptest.Server
-	tokenSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "myservice", r.URL.Query().Get("service"))
 		_, _ = w.Write([]byte(`{"token":"abc123"}`))
 	}))
