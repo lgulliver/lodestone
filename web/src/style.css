@@ -1,0 +1,158 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@import '@fontsource-variable/geist';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Technical Precision — light (default) */
+:root {
+  --radius: 0.25rem;
+
+  --background: #f7f9fb;
+  --foreground: #191c1e;
+
+  --card: #ffffff;
+  --card-foreground: #191c1e;
+
+  --popover: #ffffff;
+  --popover-foreground: #191c1e;
+
+  --primary: #00288e;
+  --primary-foreground: #ffffff;
+
+  --secondary: #d5e3fc;
+  --secondary-foreground: #3a485b;
+
+  --muted: #eceef0;
+  --muted-foreground: #444653;
+
+  --accent: #dde1ff;
+  --accent-foreground: #173bab;
+
+  --destructive: #ba1a1a;
+  --destructive-foreground: #ffffff;
+
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #00288e;
+
+  --chart-1: #00288e;
+  --chart-2: #515f74;
+  --chart-3: #2d3449;
+  --chart-4: #1e40af;
+  --chart-5: #757684;
+
+  --sidebar: #f2f4f6;
+  --sidebar-foreground: #191c1e;
+  --sidebar-primary: #00288e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #dde1ff;
+  --sidebar-accent-foreground: #173bab;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #00288e;
+}
+
+/* Technical Precision — dark (tonal inverse) */
+.dark {
+  --background: #16191b;
+  --foreground: #eff1f3;
+
+  --card: #1e2123;
+  --card-foreground: #eff1f3;
+
+  --popover: #1e2123;
+  --popover-foreground: #eff1f3;
+
+  --primary: #b8c4ff;
+  --primary-foreground: #001453;
+
+  --secondary: #3a485b;
+  --secondary-foreground: #d5e3fc;
+
+  --muted: #2d3133;
+  --muted-foreground: #c4c5d5;
+
+  --accent: #173bab;
+  --accent-foreground: #dde1ff;
+
+  --destructive: #ffb4ab;
+  --destructive-foreground: #690005;
+
+  --border: #2d3133;
+  --input: #2d3133;
+  --ring: #b8c4ff;
+
+  --chart-1: #b8c4ff;
+  --chart-2: #b9c7df;
+  --chart-3: #bec6e0;
+  --chart-4: #a8b8ff;
+  --chart-5: #c4c5d5;
+
+  --sidebar: #1e2123;
+  --sidebar-foreground: #eff1f3;
+  --sidebar-primary: #b8c4ff;
+  --sidebar-primary-foreground: #001453;
+  --sidebar-accent: #173bab;
+  --sidebar-accent-foreground: #dde1ff;
+  --sidebar-border: #2d3133;
+  --sidebar-ring: #b8c4ff;
+}
+
+@theme inline {
+  --font-sans: 'Geist Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 8px);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

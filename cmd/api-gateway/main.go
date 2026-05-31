@@ -20,6 +20,12 @@ import (
 	_ "github.com/lgulliver/lodestone/docs" // Import for swagger docs
 )
 
+// Build metadata, injected at build time via -ldflags "-X main.Version=... -X main.Commit=...".
+var (
+	Version = "dev"
+	Commit  = "none"
+)
+
 func main() {
 	// Load configuration and set up logging
 	cfg := config.LoadFromEnv()
@@ -81,6 +87,8 @@ func main() {
 		c.JSON(200, gin.H{
 			"status":  "healthy",
 			"service": "lodestone-api-gateway",
+			"version": Version,
+			"commit":  Commit,
 		})
 	}
 	router.GET("/health", healthHandler)

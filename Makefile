@@ -14,6 +14,11 @@ GOSEC_VERSION ?= v2.22.5
 GOVULNCHECK_VERSION ?= v1.1.4
 COVERAGE_SCOPE ?= ./internal/storage ./internal/registry/registries/maven
 
+# Build-time version metadata, injected into the api-gateway binary
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+LDFLAGS := -X main.Version=$(VERSION) -X main.Commit=$(COMMIT)
+
 # Default target
 help: ## Show this help message
 	@echo "Available targets:"
@@ -25,7 +30,7 @@ build: ## Build all services
 	@mkdir -p $(BINARY_DIR)
 	@for service in $(SERVICES); do \
 		echo "Building $$service..."; \
-		CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o $(BINARY_DIR)/$$service ./cmd/$$service; \
+		CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/$$service ./cmd/$$service; \
 	done
 	@echo "Build complete!"
 
@@ -33,7 +38,7 @@ build: ## Build all services
 build-%: ## Build a specific service (e.g., make build-api-gateway)
 	@echo "Building $*..."
 	@mkdir -p $(BINARY_DIR)
-	@CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o $(BINARY_DIR)/$* ./cmd/$*
+	@CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/$* ./cmd/$*
 	@echo "Build complete for $*!"
 
 # Clean build artifacts
