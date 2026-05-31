@@ -42,13 +42,9 @@ func TestOwnershipGetAddRemove(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// BUG: RemoveOwner's "last owner" guard counts only rows with role=owner and
-// rejects the removal whenever that count is <= 1 — without checking the target's
-// role. So removing a *maintainer* or *contributor* from a package that has a
-// single owner fails with "cannot remove the last owner of a package", even
-// though no owner is being removed. Documented here until the guard checks the
-// target's role before blocking.
-func TestOwnershipRemoveMaintainer_BlockedByLastOwnerGuardBug(t *testing.T) {
+// Removing a maintainer from a single-owner package must succeed: the last-owner
+// guard only applies when the target being removed is itself an owner.
+func TestOwnershipRemoveMaintainer_Allowed(t *testing.T) {
 	h := newHarness(t)
 	PackageOwnershipRoutes(h.api, h.registry, h.auth)
 	h.seedArtifact(t, "npm", "mypkg", "1.0.0", []byte("x"), nil)
@@ -59,6 +55,16 @@ func TestOwnershipRemoveMaintainer_BlockedByLastOwnerGuardBug(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	w = h.do(http.MethodDelete, "/api/packages/npm/mypkg/owners/"+second.ID.String(), nil, "")
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// The last *owner* still cannot be removed.
+func TestOwnershipRemoveLastOwner_Blocked(t *testing.T) {
+	h := newHarness(t)
+	PackageOwnershipRoutes(h.api, h.registry, h.auth)
+	h.seedArtifact(t, "npm", "mypkg", "1.0.0", []byte("x"), nil)
+
+	w := h.do(http.MethodDelete, "/api/packages/npm/mypkg/owners/"+h.user.ID.String(), nil, "")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "cannot remove the last owner")
 }

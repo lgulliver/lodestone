@@ -35,14 +35,9 @@ func TestMavenDownloadHeadDelete(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
-// BUG: upload builds the package name as join(parts[:len-2]) + ":" + artifactID,
-// which folds the artifactId into the groupId (-> "com.example.artifact:artifact").
-// Download/HEAD/Delete instead use join(parts[:len-3]) + ":" + parts[len-3]
-// (-> "com.example:artifact"). The two names never match, so an artifact uploaded
-// through the Maven PUT endpoint can never be fetched back through the GET endpoint.
-// Documented here until the path-parsing in handleMavenUpload is aligned with the
-// read handlers.
-func TestMavenUploadThenDownload_NameMismatchBug(t *testing.T) {
+// Upload and read handlers parse the Maven path identically, so an artifact
+// pushed through PUT is fetchable through GET.
+func TestMavenUploadThenDownload(t *testing.T) {
 	h := newHarness(t)
 	MavenRoutes(h.api, h.registry, h.auth)
 
@@ -51,7 +46,8 @@ func TestMavenUploadThenDownload_NameMismatchBug(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	w = h.do(http.MethodGet, "/api/maven/com/example/artifact/1.0.0/artifact-1.0.0.jar", nil, "")
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "jar-bytes", w.Body.String())
 }
 
 func TestMavenDownload_NotFound(t *testing.T) {

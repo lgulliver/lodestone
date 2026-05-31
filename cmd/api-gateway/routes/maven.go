@@ -95,15 +95,11 @@ func handleMavenUpload(registryService *registry.Service) gin.HandlerFunc {
 			return
 		}
 
-		// Extract version and filename
+		// Parse the same way the read handlers do so uploads are fetchable:
+		// groupId = path[:-3] joined with '.', artifactId = path[-3], version = path[-2].
+		groupId := strings.Join(pathParts[:len(pathParts)-3], ".")
+		artifactID := pathParts[len(pathParts)-3]
 		version := pathParts[len(pathParts)-2]
-		filename := pathParts[len(pathParts)-1]
-
-		// Extract artifact ID from filename (remove version and extension)
-		artifactID := strings.Split(filename, "-")[0]
-
-		// Construct full artifact name (groupId:artifactId)
-		groupId := strings.Join(pathParts[:len(pathParts)-2], ".")
 		fullName := fmt.Sprintf("%s:%s", groupId, artifactID)
 
 		_, err := registryService.Upload(ctx, "maven", fullName, version, c.Request.Body, user.ID)

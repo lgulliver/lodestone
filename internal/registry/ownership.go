@@ -196,16 +196,30 @@ func (os *OwnershipService) RemoveOwner(ctx context.Context, registry, packageNa
 		return fmt.Errorf("insufficient permissions to manage package ownership")
 	}
 
-	// Prevent removing the last owner
-	var ownerCount int64
-	if err := os.db.WithContext(ctx).Model(&types.PackageOwnership{}).
-		Where("package_key = ? AND role = ?", packageKey, RoleOwner).
-		Count(&ownerCount).Error; err != nil {
-		return fmt.Errorf("failed to count owners: %w", err)
+	// Prevent removing the last owner. Only the owner role is load-bearing here:
+	// removing a maintainer/contributor never drops the owner count, so the guard
+	// must check the target's role before blocking.
+	var target types.PackageOwnership
+	if err := os.db.WithContext(ctx).
+		Where("package_key = ? AND user_id = ?", packageKey, targetUserID).
+		First(&target).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("user is not an owner of this package")
+		}
+		return fmt.Errorf("failed to look up ownership: %w", err)
 	}
 
-	if ownerCount <= 1 {
-		return fmt.Errorf("cannot remove the last owner of a package")
+	if target.Role == RoleOwner {
+		var ownerCount int64
+		if err := os.db.WithContext(ctx).Model(&types.PackageOwnership{}).
+			Where("package_key = ? AND role = ?", packageKey, RoleOwner).
+			Count(&ownerCount).Error; err != nil {
+			return fmt.Errorf("failed to count owners: %w", err)
+		}
+
+		if ownerCount <= 1 {
+			return fmt.Errorf("cannot remove the last owner of a package")
+		}
 	}
 
 	// Remove ownership

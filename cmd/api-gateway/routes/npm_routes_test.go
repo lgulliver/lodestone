@@ -84,13 +84,13 @@ func TestNPMPublishInfoVersionDownloadSearchDelete(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "mypkg")
 
-	// BUG: handleNPMDelete calls registryService.Delete(..., version="") intending
-	// "delete all versions", but Service.Delete looks the artifact up with an exact
-	// `version = ?` match, so the empty version never resolves and delete always
-	// fails with 500. The npm unpublish endpoint is therefore non-functional.
-	// Documented here until Delete supports whole-package deletion.
+	// Unpublish whole package (empty version => delete all versions).
 	w = h.do(http.MethodDelete, "/api/npm/mypkg/-rev/1-0", nil, "")
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Package is gone.
+	w = h.do(http.MethodGet, "/api/npm/mypkg", nil, "")
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestNPMScopedPublishInfoDownloadDelete(t *testing.T) {
@@ -114,9 +114,8 @@ func TestNPMScopedPublishInfoDownloadDelete(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, tb, w.Body.Bytes())
 
-	// Same empty-version delete bug as the unscoped case (see TestNPMPublish...).
 	w = h.do(http.MethodDelete, "/api/npm/@myscope/mypkg/-rev/1-0", nil, "")
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestNPMInfoVersion_NotFound(t *testing.T) {

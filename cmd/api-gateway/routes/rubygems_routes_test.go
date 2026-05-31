@@ -24,21 +24,24 @@ func TestGemsSearchInfoVersionsDownload(t *testing.T) {
 	assert.Equal(t, "gem-bytes", w.Body.String())
 }
 
-// BUG: the routes use gin params ":name.json"/":filename" where ":name.json"
-// captures the param under key "name.json", so c.Param("name") is always empty
-// and handleGemInfo/handleGemVersions can never see a gem name. Both endpoints
-// therefore always return 400 regardless of input. Documented here until the
-// route definitions are fixed to use a proper param + ".json" handling.
-func TestGemInfoVersions_BrokenParamAlways400(t *testing.T) {
+func TestGemInfoVersions(t *testing.T) {
 	h := newHarness(t)
 	RubyGemsRoutes(h.api, h.registry, h.auth)
-	h.seedArtifact(t, "rubygems", "mygem", "1.0.0", []byte("x"), nil)
+	h.seedArtifact(t, "rubygems", "mygem", "1.0.0", []byte("x"),
+		types.JSONMap{"description": "a gem", "author": "Alice"})
 
 	w := h.do(http.MethodGet, "/api/gems/api/v1/gems/mygem.json", nil, "")
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "mygem")
+	assert.Contains(t, w.Body.String(), "1.0.0")
 
 	w = h.do(http.MethodGet, "/api/gems/api/v1/versions/mygem.json", nil, "")
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "1.0.0")
+
+	// Unknown gem → 404.
+	w = h.do(http.MethodGet, "/api/gems/api/v1/gems/ghost.json", nil, "")
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestGemDownload_BadFilename(t *testing.T) {

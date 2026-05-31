@@ -68,13 +68,9 @@ func TestOCIBlobPushPullDelete(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, blob, w.Body.Bytes())
 
-	// BUG: the blob upload flow stores the artifact (DB.Create) but never calls
-	// EstablishInitialOwnership, so no owner row exists for oci/myrepo. The delete
-	// handler's CanUserDelete check therefore returns false and rejects the
-	// uploader's own delete with 403 — OCI blobs are effectively undeletable.
-	// Documented here until OCI push establishes ownership.
+	// Uploader is recorded as owner on push, so they can delete the blob.
 	w = h.do(http.MethodDelete, "/api/v2/myrepo/blobs/"+digest, nil, "")
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusAccepted, w.Code)
 }
 
 func TestOCIManifestPushPullTagsCatalogDelete(t *testing.T) {
@@ -95,26 +91,18 @@ func TestOCIManifestPushPullTagsCatalogDelete(t *testing.T) {
 	w = h.do(http.MethodHead, "/api/v2/myrepo/manifests/latest", nil, "")
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// BUG: handleOCIManifestPut creates the DB artifact record by calling
-	// registryService.Upload with an EMPTY body. The OCI registry's Validate
-	// rejects empty content ("empty blob content"), so the record is never
-	// created. tags/list and _catalog are sourced from that DB record, so a
-	// manifest pushed through the normal flow never appears in either listing.
-	// Both endpoints return 200 with empty results. Documented until manifest
-	// PUT records the artifact without failing validation.
+	// Pushed manifest is recorded, so it appears in tags/list and _catalog.
 	w = h.do(http.MethodGet, "/api/v2/myrepo/tags/list", nil, "")
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), `"tags":[]`)
+	assert.Contains(t, w.Body.String(), "latest")
 
 	w = h.do(http.MethodGet, "/api/v2/_catalog", nil, "")
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), `"repositories":[]`)
+	assert.Contains(t, w.Body.String(), "myrepo")
 
-	// BUG: same missing-ownership issue as blobs — the manifest push never
-	// establishes ownership, so CanUserDelete rejects the uploader's delete
-	// with 403 instead of 202.
+	// Uploader is owner, so manifest delete is accepted.
 	w = h.do(http.MethodDelete, "/api/v2/myrepo/manifests/latest", nil, "")
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusAccepted, w.Code)
 }
 
 func TestOCIBlobUploadCancel(t *testing.T) {
