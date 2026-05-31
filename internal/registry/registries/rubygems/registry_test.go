@@ -37,7 +37,10 @@ func (m *mockStorage) Retrieve(ctx context.Context, path string) (io.ReadCloser,
 	}
 	return nil, io.EOF
 }
-func (m *mockStorage) Delete(ctx context.Context, path string) error { delete(m.data, path); return nil }
+func (m *mockStorage) Delete(ctx context.Context, path string) error {
+	delete(m.data, path)
+	return nil
+}
 func (m *mockStorage) Exists(ctx context.Context, path string) (bool, error) {
 	_, ok := m.data[path]
 	return ok, nil
