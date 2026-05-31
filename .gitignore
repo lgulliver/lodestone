@@ -11,6 +11,9 @@
 # Unignore all dirs
 !*/
 
+# Brainstorming visual companion artifacts
+.superpowers/
+
 
 # Binaries for programs and plugins
 *.exe
