@@ -20,8 +20,8 @@ func RubyGemsRoutes(api *gin.RouterGroup, registryService *registry.Service, aut
 
 	// RubyGems API - requires authentication
 	gems.GET("/api/v1/gems", middleware.AuthMiddleware(authService), handleGemsSearch(registryService))
-	gems.GET("/api/v1/gems/:name.json", middleware.AuthMiddleware(authService), handleGemInfo(registryService))
-	gems.GET("/api/v1/versions/:name.json", middleware.AuthMiddleware(authService), handleGemVersions(registryService))
+	gems.GET("/api/v1/gems/:name", middleware.AuthMiddleware(authService), handleGemInfo(registryService))
+	gems.GET("/api/v1/versions/:name", middleware.AuthMiddleware(authService), handleGemVersions(registryService))
 	gems.GET("/gems/:filename", middleware.AuthMiddleware(authService), handleGemDownload(registryService))
 
 	// Gem push (requires authentication)
@@ -82,7 +82,7 @@ func handleGemsSearch(registryService *registry.Service) gin.HandlerFunc {
 
 func handleGemInfo(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		gemName := c.Param("name")
+		gemName := strings.TrimSuffix(c.Param("name"), ".json")
 		if gemName == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "gem name required"})
 			return
@@ -132,7 +132,7 @@ func handleGemInfo(registryService *registry.Service) gin.HandlerFunc {
 
 func handleGemVersions(registryService *registry.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		gemName := c.Param("name")
+		gemName := strings.TrimSuffix(c.Param("name"), ".json")
 		if gemName == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "gem name required"})
 			return

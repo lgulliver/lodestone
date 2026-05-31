@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -233,20 +234,45 @@ func handleOCIManifestPut(registryService *registry.Service) gin.HandlerFunc {
 			contentType = "application/vnd.docker.distribution.manifest.v2+json"
 		}
 
+		// Read the manifest body so we can both store it and record its size/digest.
+		manifestBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read manifest body"})
+			return
+		}
+
 		// Store manifest using enhanced method
-		digest, err := ociRegistry.PutManifest(c.Request.Context(), name, reference, c.Request.Body, contentType)
+		digest, err := ociRegistry.PutManifest(c.Request.Context(), name, reference, bytes.NewReader(manifestBytes), contentType)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to store manifest: %v", err)})
 			return
 		}
 
-		// Create artifact record in database
+		// Record the manifest as an artifact so it surfaces in tags/list and
+		// _catalog. The OCI registry's Upload path rejects empty content, so the
+		// record is created directly here against the manifest's actual bytes.
 		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
 		ctx = context.WithValue(ctx, userIDKey, user.ID)
 
-		_, err = registryService.Upload(ctx, "oci", name, reference, strings.NewReader(""), user.ID)
-		if err != nil {
+		artifact := &types.Artifact{
+			Name:        name,
+			Version:     reference,
+			Registry:    "oci",
+			Size:        int64(len(manifestBytes)),
+			SHA256:      strings.TrimPrefix(digest, "sha256:"),
+			StoragePath: fmt.Sprintf("oci/%s/manifests/%s", name, reference),
+			PublishedBy: user.ID,
+			IsPublic:    false,
+			ContentType: contentType,
+		}
+		if err := registryService.DB.Where(
+			"registry = ? AND name = ? AND version = ?", "oci", name, reference,
+		).Assign(artifact).FirstOrCreate(artifact).Error; err != nil {
 			log.Warn().Err(err).Str("repository", name).Str("reference", reference).Msg("Failed to create artifact record")
+		}
+
+		if err := registryService.Ownership.EstablishInitialOwnership(ctx, "oci", name, user.ID); err != nil {
+			log.Warn().Err(err).Str("repository", name).Msg("Failed to establish ownership")
 		}
 
 		c.Header("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, reference))
@@ -812,6 +838,14 @@ func handleOCIBlobUploadComplete(registryService *registry.Service) gin.HandlerF
 		if err := registryService.DB.Create(artifact).Error; err != nil {
 			log.Error().Err(err).Str("digest", digest).Msg("Failed to save blob artifact to database")
 			// Don't return error as the blob is already stored successfully
+		}
+
+		// Record the uploader as the repository owner so they can later manage
+		// (e.g. delete) what they pushed. No-op if ownership already exists.
+		ctx := context.WithValue(c.Request.Context(), registryKey, "oci")
+		ctx = context.WithValue(ctx, userIDKey, user.ID)
+		if err := registryService.Ownership.EstablishInitialOwnership(ctx, "oci", name, user.ID); err != nil {
+			log.Warn().Err(err).Str("repository", name).Msg("Failed to establish ownership")
 		}
 
 		c.Header("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))

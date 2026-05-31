@@ -400,20 +400,25 @@ func (s *Service) List(ctx context.Context, filter *types.ArtifactFilter) ([]*ty
 	return artifacts, total, nil
 }
 
-// Delete removes an artifact
+// Delete removes an artifact. An empty version deletes every version of the
+// package (used by unpublish-style flows).
 func (s *Service) Delete(ctx context.Context, registryType, name, version string, userID uuid.UUID) error {
-	// Get artifact
-	var artifact types.Artifact
-	if err := s.DB.Where("LOWER(name) = LOWER(?) AND version = ? AND registry = ?",
-		name, version, registryType).First(&artifact).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("artifact not found: %s:%s", name, version)
-		}
+	query := s.DB.Where("LOWER(name) = LOWER(?) AND registry = ?", name, registryType)
+	if version != "" {
+		query = query.Where("version = ?", version)
+	}
+
+	var artifacts []types.Artifact
+	if err := query.Find(&artifacts).Error; err != nil {
 		return fmt.Errorf("failed to get artifact: %w", err)
 	}
 
-	// Check ownership permissions
-	canDelete, err := s.Ownership.CanUserDelete(ctx, registryType, artifact.Name, userID)
+	if len(artifacts) == 0 {
+		return fmt.Errorf("artifact not found: %s:%s", name, version)
+	}
+
+	// Check ownership permissions once against the resolved package name.
+	canDelete, err := s.Ownership.CanUserDelete(ctx, registryType, artifacts[0].Name, userID)
 	if err != nil {
 		return fmt.Errorf("failed to check delete permissions: %w", err)
 	}
@@ -422,14 +427,14 @@ func (s *Service) Delete(ctx context.Context, registryType, name, version string
 		return fmt.Errorf("insufficient permissions to delete artifact")
 	}
 
-	// Delete from storage
-	if err := s.Storage.Delete(ctx, artifact.StoragePath); err != nil {
-		return fmt.Errorf("failed to delete artifact from storage: %w", err)
-	}
-
-	// Delete from database
-	if err := s.DB.Delete(&artifact).Error; err != nil {
-		return fmt.Errorf("failed to delete artifact from database: %w", err)
+	for i := range artifacts {
+		artifact := &artifacts[i]
+		if err := s.Storage.Delete(ctx, artifact.StoragePath); err != nil {
+			return fmt.Errorf("failed to delete artifact from storage: %w", err)
+		}
+		if err := s.DB.Delete(artifact).Error; err != nil {
+			return fmt.Errorf("failed to delete artifact from database: %w", err)
+		}
 	}
 
 	return nil
